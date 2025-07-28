@@ -1,0 +1,194 @@
+# version: "3.8"
+
+services:
+  postgres:
+    container_name: postgres_container #this is the host name
+    image: postgres:14
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: JobDB
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d JobDB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  pgadmin:
+    container_name: pgadmin_container
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "echo stat | nc localhost 2181"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"  # For external access
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+      interval: 10s
+      timeout: 20s
+      retries: 10
+      start_period: 40s  # Give Kafka 40s to initialize before health checks
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    environment:
+    # - SPRING_REDIS_HOST=redis
+    - SPRING_REDIS_PORT=6379
+    - SPRING_REDIS_TIMEOUT=5000ms
+    - SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE=8
+    - SPRING_REDIS_LETTUCE_POOL_MAX_WAIT=5000ms
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    
+    restart: unless-stopped
+
+  job-consumer-svc: # Dokcer does not allowed Job_Consumer_Service this type of namingConvention
+    container_name: job-consumer-svc
+    build:
+      context: ./Job Management/JobConsumerSvc
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      SPRING_KAFKA_PROPERTIES_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/JobDB
+      SPRING_DATASOURCE_CONTINUE_ON_ERROR: true 
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root  
+      SPRING_PROFILES_ACTIVE: docker
+      # SPRING_SERVER_ADDRESS: "0.0.0.0"      # Spring Boot specific
+      # SPRING_SERVER_PORT: "8082"   # Spring Boot specific
+      # JAVA_OPTS: "-Dserver.address=0.0.0.0 -Dserver.port=8082"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      # redis:
+      #   condition: service_healthy
+    networks:
+      backend:
+        aliases:
+          - jobconsumer
+
+    restart: unless-stopped
+
+  job_service:
+    container_name: job_service
+    build:
+      context: ./Job Management/JobService
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    # depends_on:
+    #   kafka:
+    #     condition: service_healthy
+    #   job_consumer_svc:
+    #     condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+
+  job_scheduler_svc:
+    container_name: job_scheduler_svc
+    build:
+      context: ./Job Scheduling/watcher
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092  
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      SPRING_DATA_REDIS_TIMEOUT: 10000ms
+      SPRING_DATA_REDIS_LETTUCE_POOL_MAX_WAIT: 10000ms
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      job-consumer-svc:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  postgres:
+  pgadmin:
+
+networks:
+  backend:
+    driver: bridge

@@ -1,21 +1,25 @@
 package com.JobConsumerSvc.controller;
 
-import com.JobConsumerSvc.dto.JobDTO;
+import java.util.List;
+import java.util.stream.Collectors;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.JobConsumerSvc.dto.JobDTO;
 import com.JobConsumerSvc.entities1.Job;
 import com.JobConsumerSvc.entities1.JobEvent;
 import com.JobConsumerSvc.mapper.JobMapper;
 import com.JobConsumerSvc.repositories.JobRepository;
-import com.JobConsumerSvc.repositories.JobRunRepository;
-
 import com.JobConsumerSvc.service.JobService;
-import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.stream.Collectors;
+import lombok.RequiredArgsConstructor;
 
 @RestController
 @RequestMapping("/jobs")
@@ -55,6 +59,7 @@ public class JobController {
 
     @GetMapping("/latest")
     public ResponseEntity<Job> getLatestJob() {
+        System.out.println("Fetching latest job...hyyyyy");
         Job latestJob = jobService.getLatestJob();
         return ResponseEntity.ok(latestJob);
     }
