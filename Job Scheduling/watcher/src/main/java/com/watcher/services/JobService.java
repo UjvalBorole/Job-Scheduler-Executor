@@ -64,7 +64,7 @@ public class JobService {
 
         log.info("📦 Loaded job from DB: {}", job);
 
-        if(job.getPayload().size() == 0){
+        if(job.getPayloads().size() == 0){
             log.warn("⛔ Cancelling job, This job has no Payload please add'{}'", job.getJobSeqId());
 
             boolean cancelled = modifyJob.updateJobAndRun(

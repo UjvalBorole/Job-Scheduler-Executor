@@ -1,6 +1,5 @@
 package com.watcher.entities2;
 
-import com.JobConsumerSvc.entities3.RunStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
