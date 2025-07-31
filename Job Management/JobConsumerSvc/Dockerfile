@@ -13,7 +13,8 @@ ENV SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
 # Copy artifacts
 COPY wait-for.sh /wait-for.sh
 RUN chmod +x /wait-for.sh
-COPY target/JobConsumerSvc-0.0.1-SNAPSHOT.jar /app/
-
+# COPY target/JobConsumerSvc-0.0.1-SNAPSHOT.jar /app/
+COPY target/*.jar app.jar
 # Correct CMD syntax
-CMD ["/wait-for.sh", "kafka", "9092", "java", "-jar", "JobConsumerSvc-0.0.1-SNAPSHOT.jar"]
+# CMD ["/wait-for.sh", "kafka", "9092", "java", "-jar", "JobConsumerSvc-0.0.1-SNAPSHOT.jar"]
+CMD ["/wait-for.sh", "kafka", "9092", "java", "-jar", "app.jar"]

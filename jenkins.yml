@@ -1,0 +1,87 @@
+pipeline {
+  agent any
+
+  tools {
+    maven 'maven_3_5_0' // Make sure Maven 3.5.0 is configured in Jenkins global tools
+  }
+
+  environment {
+    GIT_CREDENTIAL_ID = 'github-credential'               // Your GitHub credentials ID in Jenkins
+    DOCKER_HUB_USERNAME = 'ujvalborole'                   // ✅ Replace with your Docker Hub username
+  }
+
+  stages {
+
+    stage('Checkout Code') {
+      steps {
+        git branch: 'main',
+            credentialsId: "${GIT_CREDENTIAL_ID}",
+            url: 'https://github.com/UjvalBorole/Job-Scheduler'
+      }
+    }
+
+    stage('Build Microservices') {
+      steps {
+        script {
+          def services = [
+            "Job Management/JobConsumerSvc",
+            "Job Management/JobService",
+            "Job Scheduling/watcher"
+          ]
+
+          for (def service : services) {
+            echo "🔨 Building ${service}..."
+            sh "cd '${service}' && mvn clean install -DskipTests"
+          }
+        }
+      }
+    }
+
+    stage('Build Docker Images') {
+      steps {
+        script {
+          def serviceImageMap = [
+            "Job Management/JobConsumerSvc" : "job-consumer-svc",
+            "Job Management/JobService"     : "job_service",
+            "Job Scheduling/watcher"        : "job_scheduler_svc"
+          ]
+
+          for (entry in serviceImageMap) {
+            def service = entry.key
+            def imageName = entry.value
+            def fullImageName = "${DOCKER_HUB_USERNAME}/${imageName}"
+            echo "🐳 Building Docker image for ${service} as ${fullImageName}..."
+            sh "cd '${service}' && docker build -t ${fullImageName} ."
+          }
+        }
+      }
+    }
+
+    stage('Push Docker Images') {
+      steps {
+        script {
+          def serviceImageMap = [
+            "Job Management/JobConsumerSvc" : "job-consumer-svc",
+            "Job Management/JobService"     : "job_service",
+            "Job Scheduling/watcher"        : "job_scheduler_svc"
+          ]
+
+          for (def imageName in serviceImageMap.values()) {
+            def fullImageName = "${DOCKER_HUB_USERNAME}/${imageName}"
+            echo "🚀 Pushing Docker image ${fullImageName} to Docker Hub..."
+            sh "docker push ${fullImageName}"
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    failure {
+      echo "❌ Build failed. Check logs."
+    }
+    success {
+      echo "✅ All microservices built and Docker images pushed successfully."
+    }
+  }
+}

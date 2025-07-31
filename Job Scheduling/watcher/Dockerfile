@@ -10,6 +10,10 @@ RUN apt-get update && \
 COPY wait-for.sh /wait-for.sh
 RUN chmod +x /wait-for.sh
 
-COPY target/watcher-0.0.1-SNAPSHOT.jar /app/
+# COPY target/watcher-0.0.1-SNAPSHOT.jar /app/
 
-CMD ["/wait-for.sh", "kafka", "9092", "java", "-jar", "watcher-0.0.1-SNAPSHOT.jar"]
+# CMD ["/wait-for.sh", "kafka", "9092", "java", "-jar", "watcher-0.0.1-SNAPSHOT.jar"]
+
+COPY target/*.jar app.jar
+
+CMD ["/wait-for.sh", "kafka", "9092", "java", "-jar", "app.jar"]
