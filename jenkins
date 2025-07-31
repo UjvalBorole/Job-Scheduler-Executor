@@ -1,0 +1,80 @@
+pipeline {
+  agent any
+  tools {
+    maven 'maven_3_5_0'
+  }
+  environment {
+    GIT_CREDENTIAL_ID = 'github-credential'
+    DOCKER_HUB_USERNAME = 'boroleujval4'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git branch: 'main',
+            credentialsId: "${GIT_CREDENTIAL_ID}",
+            url: 'https://github.com/UjvalBorole/Job-Scheduler'
+      }
+    }
+
+    stage('Build') {
+      steps {
+        script {
+          ["Job Management/JobConsumerSvc", 
+           "Job Management/JobService",
+           "Job Scheduling/watcher"].each { service ->
+            dir(service) {
+              sh 'mvn clean install -DskipTests'
+            }
+          }
+        }
+      }
+    }
+
+    stage('Docker Build') {
+      steps {
+        script {
+          ["job-consumer-svc": "Job Management/JobConsumerSvc",
+           "job_service": "Job Management/JobService",
+           "job_scheduler_svc": "Job Scheduling/watcher"].each { image, service ->
+            dir(service) {
+              sh "docker build -t ${DOCKER_HUB_USERNAME}/${image} ."
+            }
+          }
+        }
+      }
+    }
+
+    stage('Docker Push') {
+      steps {
+        script {
+          withCredentials([usernamePassword(
+            credentialsId: 'dockerhub-creds',
+            usernameVariable: 'DOCKER_USER',
+            passwordVariable: 'DOCKER_PASS'
+          )]) {
+            sh '''
+              echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+              docker push ${DOCKER_HUB_USERNAME}/job-consumer-svc
+              docker push ${DOCKER_HUB_USERNAME}/job_service
+              docker push ${DOCKER_HUB_USERNAME}/job_scheduler_svc
+              docker logout
+            '''
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    failure {
+      echo "❌ Build failed. Check logs."
+    }
+    success {
+      echo "✅ All microservices built and Docker images pushed successfully."
+    }
+    always {
+      sh 'docker logout || true'
+    }
+  }
+}
