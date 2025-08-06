@@ -1,0 +1,17 @@
+1. Restart Your Existing Jenkins
+# Start the existing container (if stopped)
+docker start 5bb5dedfb1ed
+
+# Or if you want the full name:
+docker start jenkins
+
+2.Clean Up and Recreate (If Needed)
+# Stop and remove the old container (keeps your data in the volume)
+docker stop jenkins && docker rm jenkins
+
+# Create a fresh container with the same volume
+docker run -d --name jenkins \
+  -p 8080:8080 -p 50000:50000 \
+  -v jenkins_home:/var/jenkins_home \
+  -u root \
+  jenkins/jenkins:lts
