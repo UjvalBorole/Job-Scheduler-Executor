@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-scheduler-config
+  namespace: job-scheduler
+data:
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  SPRING_DATA_REDIS_HOST: "redis"
+  SPRING_DATA_REDIS_PORT: "6379"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-scheduler-svc
+  namespace: job-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: job-scheduler-svc
+  template:
+    metadata:
+      labels:
+        app: job-scheduler-svc
+    spec:
+      containers:
+      - name: job-scheduler-svc
+        image: boroleujval4/job_scheduler_svc:latest
+        ports:
+        - containerPort: 8083
+        envFrom:
+        - configMapRef:
+            name: job-scheduler-config
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8083
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-scheduler-svc
+  namespace: job-scheduler
+spec:
+  selector:
+    app: job-scheduler-svc
+  ports:
+    - protocol: TCP
+      port: 8083
+      targetPort: 8083
+      nodePort: 31003 # NodePort for external access 
+  type: NodePort

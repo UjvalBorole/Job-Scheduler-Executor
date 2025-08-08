@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: job-consumer-config
+  namespace: job-scheduler
+data:
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/JobDB"
+  SPRING_DATASOURCE_USERNAME: "root"
+  SPRING_DATASOURCE_PASSWORD: "root"
+  SPRING_PROFILES_ACTIVE: "kubernetes"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-consumer-svc
+  namespace: job-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: job-consumer-svc
+  template:
+    metadata:
+      labels:
+        app: job-consumer-svc
+    spec:
+      containers:
+      - name: job-consumer-svc
+        image: boroleujval4/job-consumer-svc:latest
+        ports:
+        - containerPort: 8082
+        envFrom:
+        - configMapRef:
+            name: job-consumer-config
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8082
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-consumer-svc
+  namespace: job-scheduler
+spec:
+  selector:
+    app: job-consumer-svc
+  ports:
+    - protocol: TCP
+      port: 8082
+      targetPort: 8082
+      nodePort: 31002 # NodePort for external access
+  type: NodePort 

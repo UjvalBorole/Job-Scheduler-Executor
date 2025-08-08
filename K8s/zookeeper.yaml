@@ -1,0 +1,267 @@
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: zookeeper-pvc
+#   namespace: job-scheduler
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 2Gi
+#   storageClassName: local-path
+
+# ---
+# apiVersion: apps/v1
+# kind: Deployment 
+# metadata:
+#   name: zookeeper
+#   namespace: job-scheduler
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: zookeeper
+#   template:
+#     metadata:
+#       labels:
+#         app: zookeeper
+#     spec:
+#       securityContext:
+#         fsGroup: 1001  # Critical for Bitnami volume permissions
+#       containers:
+#       - name: zookeeper
+#         image: bitnami/zookeeper:3.9  # Using specific version instead of latest
+#         securityContext:
+#           runAsUser: 1001  # Matches Bitnami's non-root user
+#         ports:
+#         - containerPort: 2181
+#         env:
+#         - name: ALLOW_ANONYMOUS_LOGIN
+#           value: "yes"
+#         - name: ZOO_SERVERS
+#           value: "server.1=zookeeper-0.zookeeper-headless.job-scheduler.svc.cluster.local:2888:3888"
+#         resources:
+#           requests:
+#             memory: "512Mi"
+#             cpu: "300m"
+#         volumeMounts:
+#         - name: zookeeper-storage
+#           mountPath: /bitnami/zookeeper
+#         livenessProbe:
+#           exec:
+#             command:
+#             - sh
+#             - -c
+#             - "[ -f /bitnami/zookeeper/data/zookeeper_server.pid ] && echo stat | nc -w 1 localhost 2181 | grep Mode"
+#           initialDelaySeconds: 30
+#           periodSeconds: 10
+#           timeoutSeconds: 1
+#         readinessProbe:
+#           exec:
+#             command:
+#             - sh
+#             - -c
+#             - "echo ruok | nc -w 1 localhost 2181 | grep imok"
+#           initialDelaySeconds: 10
+#           periodSeconds: 5
+#           timeoutSeconds: 1
+#           failureThreshold: 3
+#       volumes:
+#       - name: zookeeper-storage
+#         persistentVolumeClaim:
+#           claimName: zookeeper-pvc
+
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: zookeeper
+#   namespace: job-scheduler
+# spec:
+#   selector:
+#     app: zookeeper
+#   ports:
+#     - protocol: TCP
+#       port: 2181
+#       targetPort: 2181
+#   type: ClusterIP
+
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: zookeeper-headless
+#   namespace: job-scheduler
+# spec:
+#   clusterIP: None
+#   selector:
+#     app: zookeeper
+#   ports:
+#     - name: server
+#       port: 2888
+#       targetPort: 2888
+#     - name: leader-election
+#       port: 3888
+#       targetPort: 3888
+
+
+
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: zookeeper
+#   labels:
+#     app: zookeeper
+# spec:
+#   ports:
+#     - port: 2181
+#       targetPort: 2181
+#       name: client
+#     - port: 2888
+#       targetPort: 2888
+#       name: peer
+#     - port: 3888
+#       targetPort: 3888
+#       name: leader-election
+#   selector:
+#     app: zookeeper
+
+# ---
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: zookeeper
+#   labels:
+#     app: zookeeper
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: zookeeper
+#   template:
+#     metadata:
+#       labels:
+#         app: zookeeper
+#     spec:
+#       containers:
+#         - name: zookeeper
+#           image: bitnami/zookeeper:latest
+#           imagePullPolicy: IfNotPresent
+#           ports:
+#             - containerPort: 2181
+#             - containerPort: 2888
+#             - containerPort: 3888
+#           env:
+#             - name: ALLOW_ANONYMOUS_LOGIN
+#               value: "yes"
+#           readinessProbe:
+#             tcpSocket:
+#               port: 2181
+#             initialDelaySeconds: 10
+#             periodSeconds: 5
+
+
+
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: zookeeper
+#   namespace: job-scheduler
+#   labels:
+#     app: zookeeper
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: zookeeper
+#   template:
+#     metadata:
+#       labels:
+#         app: zookeeper
+#     spec:
+#       containers:
+#       - name: zookeeper
+#         image: confluentinc/cp-zookeeper:7.3.2
+#         ports:
+#         - containerPort: 2181
+#         env:
+#         - name: ZOOKEEPER_CLIENT_PORT
+#           value: "2181"
+#         - name: ZOOKEEPER_SERVER_ID
+#           value: "1"
+#         - name: ZOOKEEPER_SERVERS
+#           value: "zookeeper-1:2888:3888"
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: zookeeper-1
+#   namespace: job-scheduler
+# spec:
+#   ports:
+#   - port: 2181
+#     targetPort: 2181
+#   selector:
+#     app: zookeeper
+
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zookeeper
+  namespace: job-scheduler
+  labels:
+    app: zookeeper
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zookeeper
+  template:
+    metadata:
+      labels:
+        app: zookeeper
+    spec:
+      containers:
+      - name: zookeeper
+        image: bitnami/zookeeper:3.9.2
+        ports:
+        - containerPort: 2181
+        env:
+        - name: ALLOW_ANONYMOUS_LOGIN
+          value: "yes"
+        readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "/opt/bitnami/zookeeper/bin/zkServer.sh status | grep 'Mode'"
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 5
+            failureThreshold: 3
+        livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "/opt/bitnami/zookeeper/bin/zkServer.sh status | grep 'Mode'"
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zookeeper
+  namespace: job-scheduler
+spec:
+  ports:
+  - port: 2181
+    targetPort: 2181
+  selector:
+    app: zookeeper
+  type: NodePort
