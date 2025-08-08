@@ -26,6 +26,7 @@ spec:
       containers:
       - name: job-scheduler-svc
         image: boroleujval4/job_scheduler_svc:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8083
         envFrom:

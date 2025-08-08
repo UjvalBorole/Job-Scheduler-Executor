@@ -28,6 +28,7 @@ spec:
       containers:
       - name: job-consumer-svc
         image: boroleujval4/job-consumer-svc:latest
+        imagePullPolicy: Always
         ports:
         - containerPort: 8082
         envFrom:
