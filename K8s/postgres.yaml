@@ -9,9 +9,7 @@ spec:
   resources:
     requests:
       storage: 2Gi
-  # storageClassName: standard
   storageClassName: local-path
-
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -39,30 +37,30 @@ spec:
         app: postgres
     spec:
       containers:
-      - name: postgres
-        image: postgres:14
-        ports:
-        - containerPort: 5432
-        envFrom:
-        - configMapRef:
-            name: postgres-config
-        volumeMounts:
-        - name: postgres-storage
-          mountPath: /var/lib/postgresql/data
-        livenessProbe:
-          exec:
-            command:
-            - pg_isready
-            - -U
-            - root
-            - -d
-            - JobDB
-          initialDelaySeconds: 30
-          periodSeconds: 10
+        - name: postgres
+          image: postgres:14
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: postgres-config
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - root
+                - -d
+                - JobDB
+            initialDelaySeconds: 30
+            periodSeconds: 10
       volumes:
-      - name: postgres-storage
-        persistentVolumeClaim:
-          claimName: postgres-pvc
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -76,3 +74,5 @@ spec:
     - protocol: TCP
       port: 5432
       targetPort: 5432
+  type: NodePort
+

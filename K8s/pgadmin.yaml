@@ -9,9 +9,7 @@ spec:
   resources:
     requests:
       storage: 2Gi
-  # storageClassName: standard
   storageClassName: local-path
-
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -38,20 +36,20 @@ spec:
         app: pgadmin
     spec:
       containers:
-      - name: pgadmin
-        image: dpage/pgadmin4
-        ports:
-        - containerPort: 80
-        envFrom:
-        - configMapRef:
-            name: pgadmin-config
-        volumeMounts:
-        - name: pgadmin-storage
-          mountPath: /var/lib/pgadmin
+        - name: pgadmin
+          image: dpage/pgadmin4
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef:
+                name: pgadmin-config
+          volumeMounts:
+            - name: pgadmin-storage
+              mountPath: /var/lib/pgadmin
       volumes:
-      - name: pgadmin-storage
-        persistentVolumeClaim:
-          claimName: pgadmin-pvc
+        - name: pgadmin-storage
+          persistentVolumeClaim:
+            claimName: pgadmin-pvc
 ---
 apiVersion: v1
 kind: Service
@@ -67,4 +65,3 @@ spec:
       port: 80
       targetPort: 80
       nodePort: 31004 # NodePort for external access
-  type: NodePort
