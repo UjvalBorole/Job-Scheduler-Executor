@@ -7,7 +7,7 @@ kubectl delete pod zookeeper-6f565c76d5-8gfc8 -n job-scheduler
 
 ## 🟢 **Cluster Info**
 
-```bash
+```
 kubectl version --short                   # Show kubectl & server version
 kubectl cluster-info                      # Show cluster control plane info
 kubectl get nodes                         # List all nodes
@@ -18,7 +18,7 @@ kubectl describe node <node-name>         # Detailed info about a node
 
 ## 📦 **Namespaces**
 
-```bash
+```
 kubectl get namespaces                    # List namespaces
 kubectl create namespace my-namespace     # Create a namespace
 kubectl delete namespace my-namespace     # Delete a namespace
@@ -29,7 +29,7 @@ kubectl config set-context --current --namespace=my-namespace   # Set default na
 
 ## 📋 **Listing Resources**
 
-```bash
+```
 kubectl get pods                          # List pods in current namespace
 kubectl get pods -n <namespace>           # List pods in specific namespace
 kubectl get svc                           # List services
@@ -41,7 +41,7 @@ kubectl get all                           # List all resources in current namesp
 
 ## 🔍 **Inspecting Resources**
 
-```bash
+```
 kubectl describe pod <pod-name>           # Detailed pod info
 kubectl describe svc <service-name>       # Detailed service info
 kubectl describe deployment <deployment>  # Detailed deployment info
@@ -51,7 +51,7 @@ kubectl describe deployment <deployment>  # Detailed deployment info
 
 ## 🛠 **Pod Logs & Debugging**
 
-```bash
+```
 kubectl logs <pod-name> -n <namespace>                  # Show logs from a pod
 kubectl logs <pod-name> -c <container>    # Logs from a specific container
 kubectl logs <pod-name> --previous        # Logs from the last crashed container
@@ -63,7 +63,7 @@ kubectl exec -it <pod-name> -- /bin/bash  # Open shell in a pod (bash)
 
 ## 🔄 **Restarting**
 
-```bash
+```
 kubectl delete pod <pod-name>             # Delete pod (Deployment/ReplicaSet will recreate it)
 kubectl rollout restart deployment <deployment-name>  # Restart all pods in deployment
 ```
@@ -72,7 +72,7 @@ kubectl rollout restart deployment <deployment-name>  # Restart all pods in depl
 
 ## 📥 **Deploying & Updating**
 
-```bash
+```
 kubectl apply -f myfile.yaml               # Apply config (create/update)
 kubectl create -f myfile.yaml              # Create resource
 kubectl replace -f myfile.yaml             # Replace resource
@@ -83,7 +83,7 @@ kubectl delete -f myfile.yaml              # Delete resource
 
 ## 🛰 **Port Forwarding**
 
-```bash
+```
 kubectl port-forward <pod-name> 8080:80    # Local 8080 → Pod port 80
 kubectl port-forward svc/my-service 8080:80 # Local 8080 → Service port 80
 ```
@@ -92,7 +92,7 @@ kubectl port-forward svc/my-service 8080:80 # Local 8080 → Service port 80
 
 ## 📤 **Copy Files**
 
-```bash
+```
 kubectl cp localfile.txt <pod-name>:/path/in/pod   # Copy to pod
 kubectl cp <pod-name>:/path/in/pod localfile.txt   # Copy from pod
 ```
@@ -101,7 +101,7 @@ kubectl cp <pod-name>:/path/in/pod localfile.txt   # Copy from pod
 
 ## 📜 **Rollouts**
 
-```bash
+```
 kubectl rollout status deployment <deployment-name>  # Show rollout status
 kubectl rollout history deployment <deployment-name> # Show rollout history
 kubectl rollout undo deployment <deployment-name>    # Rollback to previous version
@@ -111,7 +111,7 @@ kubectl rollout undo deployment <deployment-name>    # Rollback to previous vers
 
 ## 🗑 **Deleting**
 
-```bash
+```
 kubectl delete pod <pod-name>             # Delete pod
 kubectl delete svc <service-name>         # Delete service
 kubectl delete deployment <deployment>    # Delete deployment
@@ -122,7 +122,7 @@ kubectl delete all --all                   # Delete everything in namespace
 
 ## 🧪 **Debugging Pod DNS**
 
-```bash
+```
 kubectl exec -it <pod-name> -- nslookup my-service
 kubectl exec -it <pod-name> -- ping my-service
 ```
