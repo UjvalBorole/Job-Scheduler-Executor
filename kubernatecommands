@@ -52,7 +52,7 @@ kubectl describe deployment <deployment>  # Detailed deployment info
 ## 🛠 **Pod Logs & Debugging**
 
 ```bash
-kubectl logs <pod-name>                   # Show logs from a pod
+kubectl logs <pod-name> -n <namespace>                  # Show logs from a pod
 kubectl logs <pod-name> -c <container>    # Logs from a specific container
 kubectl logs <pod-name> --previous        # Logs from the last crashed container
 kubectl exec -it <pod-name> -- /bin/sh    # Open shell in a pod (sh)
@@ -129,3 +129,51 @@ kubectl exec -it <pod-name> -- ping my-service
 
 ---
 
+# 1️⃣ See all resources in the namespace (deployments, pods, services, etc.)
+kubectl get all -n job-scheduler
+
+# 2️⃣ Check the exact Docker image version running
+kubectl get deployment -n job-scheduler \
+  -o=jsonpath="{range .items[*]}{.metadata.name}{': '}{.spec.template.spec.containers[0].image}{'\n'}{end}"
+
+# 3️⃣ Watch pods start and restart in real time after Jenkins deployment
+kubectl get pods -n job-scheduler -w
+
+# 4️⃣ Describe a deployment for detailed update info
+kubectl describe deployment <deployment-name> -n job-scheduler
+
+# 5️⃣ See logs from a specific pod
+kubectl logs -n job-scheduler <pod-name>
+
+---
+
+# How to check if your changes are applied
+# You can verify in a few ways:
+
+# 1️⃣ Check pod creation time
+# When Jenkins deploys, old pods are terminated and new pods are created with a new AGE.
+
+# powershell
+kubectl get pods -n job-scheduler --sort-by=.metadata.creationTimestamp
+# If your updated service was deployed 36 seconds ago, you’ll see new pods with an AGE of seconds/minutes instead of hours/days.
+
+# 2️⃣ Describe the pod
+# You can check the image version Jenkins deployed:
+
+# powershell
+kubectl describe pod job-consumer-svc-7dbc5f764b-xs7zk -n job-scheduler | findstr "Image:"
+# If Jenkins pushed a new Docker image, the tag or digest should match the one you expect.
+
+# 3️⃣ View rollout history
+# If you’re using a Deployment, you can see if Kubernetes applied an update:
+
+# powershell
+kubectl rollout history deployment job-consumer-svc -n job-scheduler
+# This will show revision numbers and timestamps for each change.
+
+# 4️⃣ Watch logs in real time
+# If your code changes are visible in logs:
+
+# powershell
+kubectl logs -f job-consumer-svc-7dbc5f764b-xs7zk -n job-scheduler
+# Run this after deployment — if you changed logging messages in your code, they should show here.
