@@ -1,3 +1,31 @@
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: kafka-pvc
+#   namespace: job-scheduler
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 5Gi
+#   storageClassName: local-path
+# ---
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: kafka-pv
+# spec:
+#   capacity:
+#     storage: 5Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   storageClassName: local-path
+#   persistentVolumeReclaimPolicy: Retain
+#   hostPath:
+#     path: /mnt/data/kafka
+# ---
+
 # apiVersion: apps/v1
 # kind: Deployment
 # metadata:
@@ -15,6 +43,121 @@
 #       labels:
 #         app: kafka
 #     spec:
+#       # persistentVolumeReclaimPolicy: Retain
+#       securityContext:
+#           runAsUser: 0
+#           runAsGroup: 0
+#           fsGroup: 0
+#       containers:
+#         - name: kafka
+#           image: bitnami/kafka:3.7.0
+          
+#           ports:
+#             - containerPort: 9092
+#           env:
+#             - name: KAFKA_CFG_ZOOKEEPER_CONNECT
+#               value: "zookeeper:2181"
+#             - name: ALLOW_PLAINTEXT_LISTENER
+#               value: "yes"
+#             - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+#               value: "PLAINTEXT:PLAINTEXT"
+#             - name: KAFKA_CFG_LISTENERS
+#               value: "PLAINTEXT://:9092"
+#             - name: KAFKA_CFG_ADVERTISED_LISTENERS
+#               value: "PLAINTEXT://kafka:9092"
+#             - name: KAFKA_BROKER_ID
+#               value: "1"
+#             - name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
+#               value: "true"
+#             - name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR
+#               value: "1"
+#           volumeMounts:
+#             - name: kafka-storage
+#               mountPath: /bitnami/kafka
+#       volumes:
+#         - name: kafka-storage
+#           persistentVolumeClaim:
+#             claimName: kafka-pvc
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: kafka
+#   namespace: job-scheduler
+# spec:
+#   selector:
+#     app: kafka
+#   ports:
+#     - port: 9092
+#       targetPort: 9092
+#   type: NodePort
+
+
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: kafka-pvc
+#   namespace: job-scheduler
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 5Gi
+#   storageClassName: local-path
+# ---
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: kafka-pv
+# spec:
+#   capacity:
+#     storage: 5Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   storageClassName: local-path
+#   persistentVolumeReclaimPolicy: Retain
+#   hostPath:
+#     path: /mnt/data/kafka
+# ---
+
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: kafka
+#   namespace: job-scheduler
+#   labels:
+#     app: kafka
+# spec:
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: kafka
+#   template:
+#     metadata:
+#       labels:
+#         app: kafka
+#     spec:
+#       # Step 1: Init container to fix permissions
+#       initContainers:
+#         - name: volume-permissions
+#           image: bitnami/kafka:3.7.0
+#           command:
+#             - sh
+#             - -c
+#             - chown -R 1001:1001 /bitnami/kafka
+#           securityContext:
+#             runAsUser: 0   # root just for chown
+#           volumeMounts:
+#             - name: kafka-storage
+#               mountPath: /bitnami/kafka
+
+#       # Step 2: Kafka runs as non-root
+#       securityContext:
+#         runAsUser: 1001
+#         runAsGroup: 1001
+#         fsGroup: 1001
+
 #       containers:
 #         - name: kafka
 #           image: bitnami/kafka:3.7.0
@@ -37,6 +180,15 @@
 #               value: "true"
 #             - name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR
 #               value: "1"
+#           volumeMounts:
+#             - name: kafka-storage
+#               mountPath: /bitnami/kafka
+
+#       volumes:
+#         - name: kafka-storage
+#           persistentVolumeClaim:
+#             claimName: kafka-pvc
+
 # ---
 # apiVersion: v1
 # kind: Service
@@ -52,28 +204,283 @@
 #   type: NodePort
 
 
+# apiVersion: apps/v1
+# kind: StatefulSet
+# metadata:
+#   name: kafka
+#   namespace: job-scheduler
+# spec:
+#   serviceName: "kafka"
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: kafka
+#   template:
+#     metadata:
+#       labels:
+#         app: kafka
+#     spec:
+#       securityContext:
+#         runAsUser: 0
+#         runAsGroup: 0
+#         fsGroup: 0
+#       containers:
+#       - name: kafka
+#         image: bitnami/kafka:3.7.0
+#         ports:
+#         - containerPort: 9092
+#         env:
+#         - name: KAFKA_CFG_ZOOKEEPER_CONNECT
+#           value: "zookeeper:2181"
+#         - name: ALLOW_PLAINTEXT_LISTENER
+#           value: "yes"
+#         - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+#           value: "PLAINTEXT:PLAINTEXT"
+#         - name: KAFKA_CFG_LISTENERS
+#           value: "PLAINTEXT://:9092"
+#         - name: KAFKA_CFG_ADVERTISED_LISTENERS
+#           value: "PLAINTEXT://kafka:9092"
+#         - name: KAFKA_BROKER_ID
+#           value: "1"
+#         - name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
+#           value: "true"
+#         - name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR
+#           value: "1"
+#         volumeMounts:
+#         - name: kafka-data
+#           mountPath: /bitnami/kafka
+#   volumeClaimTemplates:
+#   - metadata:
+#       name: kafka-data
+#     spec:
+#       accessModes: [ "ReadWriteOnce" ]
+#       resources:
+#         requests:
+#           storage: 5Gi
+#       storageClassName: local-path
+# ---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: kafka
+#   namespace: job-scheduler
+# spec:
+#   ports:
+#   - port: 9092
+#     targetPort: 9092
+#   clusterIP: None
+#   selector:
+#     app: kafka
+
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: kafka-pv
+# spec:
+#   capacity:
+#     storage: 5Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: local-storage
+#   hostPath:
+#     path: /mnt/data/kafka
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: kafka-data-kafka-0  # <-- Must match StatefulSet naming convention
+#   namespace: job-scheduler
+# spec:
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 5Gi
+#   storageClassName: local-storage
+# ---
+# apiVersion: apps/v1
+# kind: StatefulSet
+# metadata:
+#   name: kafka
+#   namespace: job-scheduler
+# spec:
+#   serviceName: kafka
+#   replicas: 1
+#   selector:
+#     matchLabels:
+#       app: kafka
+#   template:
+#     metadata:
+#       labels:
+#         app: kafka
+#     spec:
+#       securityContext:
+#         runAsUser: 0
+#         runAsGroup: 0
+#         fsGroup: 0
+#       containers:
+#       - name: kafka
+#         image: bitnami/kafka:3.7.0
+#         ports:
+#         - containerPort: 9092
+#         env:
+#         - name: KAFKA_CFG_ZOOKEEPER_CONNECT
+#           value: "zookeeper:2181"
+#         - name: ALLOW_PLAINTEXT_LISTENER
+#           value: "yes"
+#         - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
+#           value: "PLAINTEXT:PLAINTEXT"
+#         - name: KAFKA_CFG_LISTENERS
+#           value: "PLAINTEXT://:9092"
+#         - name: KAFKA_CFG_ADVERTISED_LISTENERS
+#           value: "PLAINTEXT://kafka:9092"
+#         - name: KAFKA_BROKER_ID
+#           value: "1"
+#         - name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
+#           value: "true"
+#         - name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR
+#           value: "1"
+#         volumeMounts:
+#         - name: kafka-data
+#           mountPath: /bitnami/kafka
+#       volumes:
+#       - name: kafka-data
+#         persistentVolumeClaim:
+#           claimName: kafka-data-kafka-0  # <-- This PVC will always be reused
+
+
+
+# Kafka PV (node-specific storage)
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: kafka-pv
+#   labels:
+#     type: local
+# spec:
+#   capacity:
+#     storage: 5Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   persistentVolumeReclaimPolicy: Retain  # Critical for data safety
+#   storageClassName: local-storage
+#   local:
+#     path: /mnt/data/kafka  # Must exist on the node with permissions 1001:1001
+#   nodeAffinity:
+#     required:
+#       nodeSelectorTerms:
+#       - matchExpressions:
+#         - key: kubernetes.io/hostname
+#           operator: In
+#           values:
+#           - your-worker-node-name  # Replace with actual node name
+
+# ---
+# # Kafka StatefulSet (KRaft mode)
+# apiVersion: apps/v1
+# kind: StatefulSet
+# metadata:
+#   name: kafka
+#   namespace: job-scheduler
+# spec:
+#   serviceName: kafka
+#   replicas: 1  # Use 3+ for production
+#   selector:
+#     matchLabels:
+#       app: kafka
+#   template:
+#     metadata:
+#       labels:
+#         app: kafka
+#     spec:
+#       securityContext:
+#         fsGroup: 1001  # Ensures Kafka user (UID 1001) can write to the volume
+#       containers:
+#       - name: kafka
+#         image: bitnami/kafka:3.7.0
+#         env:
+#         - name: KAFKA_ENABLE_KRAFT
+#           value: "yes"
+#         - name: KAFKA_CFG_PROCESS_ROLES
+#           value: "controller,broker"
+#         - name: KAFKA_CFG_NODE_ID
+#           value: "1"
+#         - name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
+#           value: "1@kafka-0.kafka.job-scheduler.svc.cluster.local:9093"
+#         - name: KAFKA_CFG_LISTENERS
+#           value: "PLAINTEXT://:9092,CONTROLLER://:9093"
+#         - name: KAFKA_CFG_ADVERTISED_LISTENERS
+#           value: "PLAINTEXT://kafka:9092"
+#         volumeMounts:
+#         - name: data
+#           mountPath: /bitnami/kafka
+#   volumeClaimTemplates:
+#   - metadata:
+#       name: data
+#     spec:
+#       accessModes: ["ReadWriteOnce"]
+#       resources:
+#         requests:
+#           storage: 5Gi
+#       storageClassName: local-storage
+#       selector:
+#         matchLabels:
+#           type: local  # Binds to our PV
+
+# ---
+# # Kafka Service (Headless)
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: kafka
+#   namespace: job-scheduler
+# spec:
+#   ports:
+#   - port: 9092
+#     name: client
+#   - port: 9093
+#     name: controller
+#   clusterIP: None
+#   selector:
+#     app: kafka
+
+
+# Kafka PV (node-specific storage)
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: PersistentVolume
 metadata:
-  name: kafka-pvc
-  namespace: job-scheduler
+  name: kafka-pv
+  labels:
+    type: local
 spec:
+  capacity:
+    storage: 5Gi
   accessModes:
     - ReadWriteOnce
-  resources:
-    requests:
-      storage: 5Gi
-  storageClassName: local-path
+  persistentVolumeReclaimPolicy: Retain  # Critical for data safety
+  storageClassName: local-storage
+  local:
+    path: /mnt/data/kafka  # Must exist on the node
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - docker-desktop  # Replace with actual node name
+
 ---
+# Kafka StatefulSet (KRaft mode)
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: kafka
   namespace: job-scheduler
-  labels:
-    app: kafka
 spec:
-  replicas: 1
+  serviceName: kafka
+  replicas: 1  # Use 3+ for production
   selector:
     matchLabels:
       app: kafka
@@ -83,49 +490,54 @@ spec:
         app: kafka
     spec:
       securityContext:
-          runAsUser: 0
-          runAsGroup: 0
-          fsGroup: 1001
+        fsGroup: 1001  # Ensures Kafka user (UID 1001) can write to the volume
       containers:
-        - name: kafka
-          image: bitnami/kafka:3.7.0
-          
-          ports:
-            - containerPort: 9092
-          env:
-            - name: KAFKA_CFG_ZOOKEEPER_CONNECT
-              value: "zookeeper:2181"
-            - name: ALLOW_PLAINTEXT_LISTENER
-              value: "yes"
-            - name: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
-              value: "PLAINTEXT:PLAINTEXT"
-            - name: KAFKA_CFG_LISTENERS
-              value: "PLAINTEXT://:9092"
-            - name: KAFKA_CFG_ADVERTISED_LISTENERS
-              value: "PLAINTEXT://kafka:9092"
-            - name: KAFKA_BROKER_ID
-              value: "1"
-            - name: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
-              value: "true"
-            - name: KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR
-              value: "1"
-          volumeMounts:
-            - name: kafka-storage
-              mountPath: /bitnami/kafka
-      volumes:
-        - name: kafka-storage
-          persistentVolumeClaim:
-            claimName: kafka-pvc
+      - name: kafka
+        image: bitnami/kafka:3.7.0
+        env:
+        - name: KAFKA_ENABLE_KRAFT
+          value: "yes"
+        - name: KAFKA_CFG_PROCESS_ROLES
+          value: "controller,broker"
+        - name: KAFKA_CFG_NODE_ID
+          value: "1"
+        - name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES  # <-- MISSING VARIABLE ADDED
+          value: "CONTROLLER"
+        - name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
+          value: "1@kafka-0.kafka.job-scheduler.svc.cluster.local:9093"
+        - name: KAFKA_CFG_LISTENERS
+          value: "PLAINTEXT://:9092,CONTROLLER://:9093"
+        - name: KAFKA_CFG_ADVERTISED_LISTENERS
+          value: "PLAINTEXT://kafka:9092"
+        volumeMounts:
+        - name: data
+          mountPath: /bitnami/kafka
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 5Gi
+      storageClassName: local-storage
+      selector:
+        matchLabels:
+          type: local  # Binds to our PV
+
 ---
+# Kafka Service (Headless)
 apiVersion: v1
 kind: Service
 metadata:
   name: kafka
   namespace: job-scheduler
 spec:
+  ports:
+  - port: 9092
+    name: client
+  - port: 9093
+    name: controller
+  clusterIP: None
   selector:
     app: kafka
-  ports:
-    - port: 9092
-      targetPort: 9092
-  type: NodePort
