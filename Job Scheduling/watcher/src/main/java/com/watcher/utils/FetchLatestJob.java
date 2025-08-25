@@ -31,7 +31,7 @@ public class FetchLatestJob {
                     .retrieve()
                     .bodyToMono(Job.class)
                     .block();  // blocking call
-            System.out.println(latestJob +" this is the latest job");
+//            System.out.println(latestJob +" this is the latest job");
             if (latestJob != null && TaskStatus.READY.equals(latestJob.getStatus())) {
 
                 Long currentJobId = latestJob.getId();

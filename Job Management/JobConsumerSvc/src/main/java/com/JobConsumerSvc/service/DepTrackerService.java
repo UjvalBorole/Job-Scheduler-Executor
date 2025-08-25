@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -24,7 +25,8 @@ public class DepTrackerService {
         DepTracker depTracker = DepTracker.builder()
                 .jobId(dto.getJobId())
                 .jobName(dto.getJobName())
-                .jobStatus(dto.getJobStatus()) // convert string to enum
+                .jobStatus(dto.getJobStatus())
+//                .jobStatus(dto.getJobStatus() != null ? JobStatus.valueOf(dto.getJobStatus().toUpperCase()) : null)
                 .dependencies(dto.getDependencies())
                 .retryCount(dto.getRetryCount())
                 .maxRetries(dto.getMaxRetries())
@@ -42,19 +44,27 @@ public class DepTrackerService {
         return saved;
     }
 
-    public DepTracker patchDepTracker(String id, DepTrackerDTO dto) {
-        DepTracker existing = depTrackerRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("DepTracker not found with id=" + id));
+    public DepTracker getByJobIdAndScheduleTime(String jobId, LocalDateTime scheduleTime) {
+        return depTrackerRepository
+                .findByJobIdAndScheduleTime(jobId, scheduleTime)
+                .orElseThrow(() ->
+                        new RuntimeException("DepTracker not found for jobId=" + jobId + " and scheduleTime=" + scheduleTime)
+                );
+    }
 
-        log.info("Patching DepTracker with id={} fields={}", id, dto);
+    public DepTracker patchDepTracker(String jobId, DepTrackerDTO dto) {
+        DepTracker existing = depTrackerRepository
+                .findByJobIdAndScheduleTime(jobId, dto.getScheduleTime())
+                .orElseThrow(() -> new RuntimeException(
+                        "DepTracker not found for jobId=" + jobId + " and scheduleTime=" + dto.getScheduleTime()));
+
+        log.info("Patching DepTracker with jobId={} fields={}", jobId, dto);
 
         if (dto.getJobName() != null) existing.setJobName(dto.getJobName());
-        if (dto.getJobStatus() != null)
-            existing.setJobStatus(dto.getJobStatus());
+        if (dto.getJobStatus() != null) existing.setJobStatus(dto.getJobStatus());
         if (dto.getDependencies() != null) existing.setDependencies(dto.getDependencies());
-        if (dto.getMaxRetries() != null) existing.setRetryCount(dto.getRetryCount());
+        if (dto.getRetryCount() != null) existing.setRetryCount(dto.getRetryCount());
         if (dto.getMaxRetries() != null) existing.setMaxRetries(dto.getMaxRetries());
-        if (dto.getScheduleTime() != null) existing.setScheduleTime(dto.getScheduleTime());
         if (dto.getStartTime() != null) existing.setStartTime(dto.getStartTime());
         if (dto.getEndTime() != null) existing.setEndTime(dto.getEndTime());
         if (dto.getNextCron() != null) existing.setNextCron(dto.getNextCron());
@@ -63,6 +73,7 @@ public class DepTrackerService {
 
         return depTrackerRepository.save(existing);
     }
+
 
     public void deleteDepTracker(String id) {
         if (!depTrackerRepository.existsById(id)) {

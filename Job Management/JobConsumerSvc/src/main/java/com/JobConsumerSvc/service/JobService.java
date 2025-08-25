@@ -1,6 +1,7 @@
 package com.JobConsumerSvc.service;
 
 import com.JobConsumerSvc.dto.JobDTO;
+import com.JobConsumerSvc.dto.JobRunCacheDTO;
 import com.JobConsumerSvc.dto.JobRunDTO;
 import com.JobConsumerSvc.entities1.*;
 import com.JobConsumerSvc.entities2.Payload;
@@ -31,6 +32,8 @@ public class JobService {
     private final JobRepository jobRepository;
     private final JobRunRepository jobRunRepository;
     private final PayloadRepository payloadRepository;
+    // ✅ Use Redis Cache Service instead of JobRunRepository
+    private final JobRunCacheService jobRunCacheService;
 
     private final JobRunService jobRunService;
 
@@ -91,11 +94,17 @@ public class JobService {
             entity.setModifiedTime(LocalDateTime.now()); // ✅ set modified time on creation
             Job createdJob = jobRepository.save(entity);
 
-            jobRunRepository.save(JobRun.builder()
+            // ✅ Store initial JobRun in Redis
+            JobRunCacheDTO jobRunDTO = JobRunCacheDTO.builder()
                     .jobId(createdJob.getId())
                     .status(RunStatus.PENDING)
                     .attemptNumber(1)
-                    .build());
+                    .modifiedTime(LocalDateTime.now())
+                    .executorId("not-assigned")
+                    .errorMsg("No error")
+                    .build();
+
+            jobRunCacheService.create(jobRunDTO);
 
             LOGGER.info("✅ Job {} created successfully", createdJob.getId());
 
@@ -159,17 +168,18 @@ public class JobService {
 
         // ✅ set modified time on update
         job.setModifiedTime(LocalDateTime.now());
-        JobRunDTO jobRunDTO = JobRunDTO
-                .builder()
-                .errorMsg("no error")
-                .attemptNumber(0)
-                .executorId("no execution")
+        jobRepository.save(job);
+
+        // ✅ Update JobRun in Redis (PATCH style)
+        JobRunCacheDTO jobRunDTO = JobRunCacheDTO.builder()
                 .modifiedTime(LocalDateTime.now())
                 .status(RunStatus.PENDING)
+                .executorId("no execution")
+                .attemptNumber(0)
+                .errorMsg("no error")
                 .build();
 
-        jobRepository.save(job);
-        jobRunService.updateJobRun(job.getId(),jobRunDTO);
+        jobRunCacheService.patchUpdate(job.getId(), jobRunDTO);
     }
 
     private void handleDelete(String jobIdStr) {
@@ -178,10 +188,8 @@ public class JobService {
             Long jobId = Long.parseLong(jobIdStr);
             if (jobRepository.existsById(jobId)) {
 
-                JobRun run = jobRunRepository.findByJobId(jobId)
-                        .orElseThrow(() -> new EntityNotFoundException("JobRun not found with jobId: " + jobId));
-
-                if (run != null) LOGGER.info("Found JobRun entries for jobId {}", jobId);
+                // ✅ Remove JobRun from Redis cache
+                jobRunCacheService.delete(jobId);
                 jobRunRepository.deleteByJobId(jobId);
 
                 jobRepository.deleteById(jobId);

@@ -18,7 +18,7 @@ public class DepTrackerController {
     private final DepTrackerService depTrackerService;
 
     @PostMapping
-    public  ResponseEntity<DepTracker> createDepTracker(@RequestBody DepTrackerDTO dto) {
+    public ResponseEntity<DepTracker> createDepTracker(@RequestBody DepTrackerDTO dto) {
         DepTracker depTracker =  depTrackerService.createDepTracker(dto);
         return ResponseEntity.ok(depTracker);
     }

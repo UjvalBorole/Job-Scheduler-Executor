@@ -18,7 +18,7 @@ public class Job {
     private TaskStatus status;
     private LocalDateTime scheduleTime;
     private String cronExpression;
-    private String dependencies;
+    private List<String> dependencies;
     private int retries;
     private List<Payload> payloads;
     private String email;

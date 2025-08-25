@@ -1,40 +1,56 @@
 package com.watcher.utils;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.watcher.entities1.Job;
+import com.watcher.Config.JobRunCacheService;
+import com.watcher.entities3.JobRunCacheDTO;
 import com.watcher.entities1.TaskStatus;
-import com.watcher.entities3.JobRun;
 import com.watcher.entities3.RunStatus;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @Service
 public class ModifyJob {
+
     private final WebClient webClient;
+    private final JobRunCacheService jobRunCacheService;
+
+
+    private final RedisTemplate<String, Object> redisTemplate;
+    private final ObjectMapper mapper;
 
     @Autowired
-    public ModifyJob(WebClient webClient) {
+    public ModifyJob(WebClient webClient, JobRunCacheService jobRunCacheService, RedisTemplate<String, Object> redisTemplate, ObjectMapper mapper) {
         this.webClient = webClient;
+        this.jobRunCacheService = jobRunCacheService;
+        this.redisTemplate = redisTemplate;
+        this.mapper = mapper;
     }
 
+
     /**
-     * Patch only the specified fields of Job and JobRun.
+     * Update job run details (status, timestamps, error message, etc.)
      */
-    public boolean updateJobAndRun(Long jobId, TaskStatus jobStatus, RunStatus runStatus, String errorMessage) {
+    public boolean updateJobAndRun(Long jobId,
+                                   TaskStatus jobStatus,
+                                   RunStatus newStatus,   // 🔄 use RunStatus here, not TaskStatus
+                                   String errorMessage,
+                                   LocalDateTime executionTime
+    ) {
         try {
             // 🛠 Dynamically build Job fields
             Map<String, Object> jobPatchBody = new HashMap<>();
             if (jobStatus != null) jobPatchBody.put("status", jobStatus);
 
-            // 🛠 Dynamically build JobRun fields
-            Map<String, Object> runPatchBody = new HashMap<>();
-            if (runStatus != null) runPatchBody.put("status", runStatus);
-            if (errorMessage != null)runPatchBody.put("errorMsg", errorMessage);
+
 
             // 🔄 Patch Job
             if (!jobPatchBody.isEmpty()) {
@@ -49,18 +65,37 @@ public class ModifyJob {
                 System.out.println("✅ Patched Job: " + jobResp);
             }
 
-            // 🔄 Patch JobRun
-            if (!runPatchBody.isEmpty()) {
-                String runResp = webClient.patch()
-                        .uri("/api/job-runs/{id}", jobId)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .bodyValue(runPatchBody)
-                        .retrieve()
-                        .bodyToMono(String.class)
-                        .block();
-
-                System.out.println("✅ Patched JobRun: " + runResp);
+            JobRunCacheDTO existing = jobRunCacheService.get(jobId);
+            if (existing == null) {
+                throw new IllegalArgumentException("JobRun not found in Redis: " + jobId);
             }
+
+            // 🔧 Update status
+            if (newStatus != null) {
+                existing.setStatus(newStatus);
+                existing.setModifiedTime(LocalDateTime.now());
+
+                if (newStatus == RunStatus.RUNNING) {
+                    existing.setStartTime(LocalDateTime.now());
+                }
+                if (newStatus == RunStatus.SUCCESS || newStatus == RunStatus.FAILED) {
+                    existing.setEndTime(LocalDateTime.now());
+                }
+            }
+
+            // 🔧 Update error message if present
+            if (errorMessage != null) {
+                existing.setErrorMsg(errorMessage);
+            }
+
+            // 🔧 Update scheduled/execution time if provided
+            if (executionTime != null) {
+                existing.setExecutionTime(executionTime);
+            }
+
+            // ✅ Save back into Redis (JSON overwrite)
+            JobRunCacheDTO updated = jobRunCacheService.update(jobId, existing);
+            log.info("✅ Updated JobRun {} to status={}, executionTime={}", jobId, newStatus, executionTime);
 
             return true;
         } catch (Exception e) {
@@ -68,4 +103,5 @@ public class ModifyJob {
             return false;
         }
     }
+
 }

@@ -1,7 +1,6 @@
 package com.watcher.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.watcher.Config.RedisPriorityQueueService;
 import com.watcher.Config.ScheduledJobProducer;
 import com.watcher.entities1.Job;
@@ -11,189 +10,250 @@ import com.watcher.entities3.RunStatus;
 import com.watcher.utils.CronMetadataExtractor;
 import com.watcher.utils.FetchLatestJob;
 import com.watcher.utils.ModifyJob;
+import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.connection.RedisConnection;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.time.ZoneId;
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class JobService {
 
-    @Autowired
-    private FetchLatestJob fetchLatestJob;
+    private final FetchLatestJob fetchLatestJob;
+    private final ModifyJob modifyJob;
+    private final CronMetadataExtractor cronMetadataExtractor;
+    private final RedisPriorityQueueService redisPriorityQueueService;
+    private final ScheduledJobProducer scheduledJobProducer;
+//    @Qualifier("redisQueueTemplate")
+    private final RedisTemplate<String, String> redisTemplate;
+    private final ObjectMapper mapper;
 
-    @Autowired
-    private ModifyJob modifyJob;
+    @Value("${job.expiry.threshold.minutes:5}")
+    private long expiryThresholdMinutes;
 
-    @Autowired
-    private CronMetadataExtractor cronMetadataExtractor;
+    @Value("${job.expiry.action:CANCEL}")
+    private String expiryAction;
 
-    @Autowired
-    private RedisPriorityQueueService redisPriorityQueueService;
+    @Value("${job.cron.future.count:10}")
+    private int futureCount;
 
-    @Autowired
-    private ScheduledJobProducer scheduledJobProducer;
+    @Value("${job.processor.batch.size:5}")
+    private int batchSize;
 
-    private final ObjectMapper mapper = new ObjectMapper()
-            .registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+    @Value("${job.kafka.retry.delay.seconds:30}")
+    private int kafkaRetryDelaySeconds;
 
-//    @PostConstruct
-//    public void clearRedisQueueAtStartup() {
-//        redisPriorityQueueService.clearAllJobs();
-//        log.info("🧹 Cleared all jobs from Redis priority queue at startup.");
-//    }
+    @Value("${job.lock.timeout.seconds:300}") // NEW: Lock timeout
+    private long lockTimeoutSeconds;
 
+    private final ExecutorService executor = Executors.newFixedThreadPool(5);
 
-    /**
-     * Load next 10 cron execution times into Redis
-     */
-    @Scheduled(fixedDelay = 20000)
+    // ===== Load next N cron executions =====
+    @Scheduled(fixedDelayString = "${job.loader.interval.ms:20000}")
+    @SchedulerLock(name = "loadJobsIntoRedisQueue", lockAtLeastFor = "10s", lockAtMostFor = "30s")
     public void loadJobsIntoRedisQueue() {
-        Job job = fetchLatestJob.fetchLatestJob();
-        if (job == null || job.getCronExpression() == null) {
-            log.warn("❌ No valid job or cron expression.");
-            return;
-        }
-
-        log.info("📦 Loaded job from DB: {}", job);
-
-        if(job.getPayloads().size() == 0){
-            log.warn("⛔ Cancelling job, This job has no Payload please add'{}'", job.getJobSeqId());
-            System.out.println("new jobs "+job);
-            boolean cancelled = modifyJob.updateJobAndRun(
-                    job.getId(),
-                    TaskStatus.CANCELLED,
-                    RunStatus.FAILED,
-                    "This job has no Payload "
-            );
-
-            if (cancelled) {
-                log.info("🛑 Job '{}' cancelled successfully due to job has no Payload .", job.getJobSeqId());
-            } else {
-                log.warn("⚠️ Failed to cancel job '{}'", job.getJobSeqId());
-            }
-            return;
-        }
-
-        List<Map.Entry<String, LocalDateTime>> pairs =
-                cronMetadataExtractor.getFormattedAndLocalExecutionTimes(job.getCronExpression(), 10);
-
-        // 🔍 Check if all entries are invalid or empty
-        boolean allInvalid = pairs.stream().allMatch(entry -> entry.getValue() == null);
-
-        if (pairs.isEmpty() || allInvalid) {
-            log.warn("⛔ CRON expression produced no valid future times. Cancelling job '{}'", job.getJobSeqId());
-
-            boolean cancelled = modifyJob.updateJobAndRun(
-                    job.getId(),
-                    TaskStatus.CANCELLED,
-                    RunStatus.FAILED,
-                    "No upcoming scheduled times — CRON expired or invalid"
-            );
-
-            if (cancelled) {
-                log.info("🛑 Job '{}' cancelled successfully due to expired CRON.", job.getJobSeqId());
-            } else {
-                log.warn("⚠️ Failed to cancel job '{}'", job.getJobSeqId());
-            }
-            return;
-        }
-
-
-
-        // ✅ Push future executions to Redis
-        for (Map.Entry<String, LocalDateTime> entry : pairs) {
-            LocalDateTime scheduledTime = entry.getValue();
-            LocalDateTime now = LocalDateTime.now();
-
-            if (scheduledTime == null) {
-                log.warn("⚠️ Skipping null scheduledTime for job '{}' for timing of '{}' ", job.getJobSeqId(),entry.getKey());
-                continue;
+        try {
+            Job job = fetchLatestJob.fetchLatestJob();
+            if (job == null || job.getCronExpression() == null) {
+                log.warn("❌ No valid job or cron expression.");
+                return;
             }
 
-            redisPriorityQueueService.addToQueue(job, scheduledTime);
-            log.info("📥 Pushed job '{}' to Redis for execution at {}", job.getJobSeqId(), entry.getKey());
+            if (job.getPayloads() == null || job.getPayloads().isEmpty()) {
+                cancelJob(job, "This job has no payload");
+                return;
+            }
+
+            List<Map.Entry<String, LocalDateTime>> pairs =
+                    cronMetadataExtractor.getFormattedAndLocalExecutionTimes(job.getCronExpression(), futureCount);
+
+            boolean allInvalid = pairs.stream().allMatch(entry -> entry.getValue() == null);
+            if (pairs.isEmpty() || allInvalid) {
+                cancelJob(job, "No upcoming scheduled times — CRON expired or invalid");
+                return;
+            }
+
+            for (Map.Entry<String, LocalDateTime> entry : pairs) {
+                if (entry.getValue() != null) {
+                    redisPriorityQueueService.addToQueue(job, entry.getValue());
+                    log.info("📥 Scheduled job {} for {}", job.getJobSeqId(), entry.getKey());
+                }
+            }
+        } catch (Exception e) {
+            log.error("❌ Error loading jobs into Redis queue: {}", e.getMessage(), e);
         }
     }
 
-    /**
-     * Process jobs from Redis that are due or expired
-     */
-    @Scheduled(fixedRate = 30000)
+    // ===== Process jobs due/expired =====
+    @Scheduled(fixedRateString = "${job.processor.interval.ms:30000}")
+    @SchedulerLock(name = "processScheduledJobsFromRedis", lockAtLeastFor = "10s", lockAtMostFor = "1m")
     public void processScheduledJobsFromRedis() {
         try {
-            Optional<String> jobStrOpt = redisPriorityQueueService.peekTopJob();
-            if (jobStrOpt.isEmpty()) return;
+            List<String> jobs = redisPriorityQueueService.pollTopJobsAtomically(batchSize);
+            if (jobs.isEmpty()) return;
 
-            String jobStr = jobStrOpt.get();
-            RedisJobWrapper wrapper = mapper.readValue(jobStr, RedisJobWrapper.class);
+            for (String jobStr : jobs) {
+                executor.submit(() -> {
+                    try {
+                        handleJob(jobStr);
+                    } catch (Exception e) {
+                        log.error("❌ Error processing job: {}", e.getMessage(), e);
+                    }
+                });
+            }
+        } catch (Exception e) {
+            log.error("❌ Error during Redis job batch processing: {}", e.getMessage(), e);
+        }
+    }
 
-            LocalDateTime now = LocalDateTime.now();
-            LocalDateTime fiveMinutesAgo = now.minusMinutes(5);
-            LocalDateTime scheduledTime = wrapper.getTime();
+    private void handleJob(String jobStr) {
+        RedisJobWrapper wrapper = null;
+        try {
+            wrapper = mapper.readValue(jobStr, RedisJobWrapper.class);
             Job job = wrapper.getJob();
+            LocalDateTime scheduledTime = wrapper.getTime();
+            LocalDateTime now = getClusterTime();
 
-            log.info("🔍 Checking top job {} → Scheduled: {}, Now: {}", job.getJobSeqId(), scheduledTime, now);
+            // Idempotency key with timeout to prevent deadlocks
+            String lockKey = "job:lock:" + job.getJobSeqId() + ":" + scheduledTime;
+            Boolean lockAcquired = redisTemplate.opsForValue().setIfAbsent(
+                    lockKey, "1", Duration.ofSeconds(lockTimeoutSeconds));
 
-            // CASE 1: Expired
-            if (scheduledTime.isBefore(fiveMinutesAgo)) {
-                boolean cancelled = modifyJob.updateJobAndRun(
-                        job.getId(),
-                        TaskStatus.CANCELLED,
-                        RunStatus.FAILED,
-                        "time over/out to current time"
-                );
-                if (cancelled) {
-                    redisPriorityQueueService.pollTopJob();
-                    log.info("🗑 Cancelled expired job {}", job.getJobSeqId());
-                    redisPriorityQueueService.inspectQueue();
+            if (lockAcquired == null || !lockAcquired) {
+                log.warn("⚠️ Skipping duplicate job {} at {}", job.getJobSeqId(), scheduledTime);
+                // Re-add to queue if still valid
+                if (scheduledTime.isAfter(now)) {
+                    redisPriorityQueueService.addToQueue(job, scheduledTime);
                 }
                 return;
             }
 
-            // CASE 2: Due now
-            if (!scheduledTime.isAfter(now)) {
-                scheduledJobProducer.sendEvent(wrapper);
+            LocalDateTime expiryCutoff = now.minusMinutes(expiryThresholdMinutes);
 
-                boolean updated = modifyJob.updateJobAndRun(
-                        job.getId(),
-                        TaskStatus.SCHEDULED,
-                        RunStatus.QUEUED,
-                        null
-                );
-                if (updated) {
-                    boolean removed = redisPriorityQueueService.pollTopJob();
-                    if (removed) {
-                        log.info("🧹 Removed job {} from Redis", job.getJobSeqId());
-                        redisPriorityQueueService.inspectQueue();
-                    }
-                    log.info("📤 Sent job {} to Kafka", job.getJobSeqId());
-                }
+            // CASE 1: Expired job
+            if (scheduledTime.isBefore(expiryCutoff)) {
+                handleExpiredJob(job);
+                redisTemplate.delete(lockKey); // Clean up lock
+                return;
             }
 
-            // CASE 3: Not yet due → do nothing
+            // CASE 2: Due now or in the past (within threshold)
+            if (!scheduledTime.isAfter(now)) {
+                handleDueJob(wrapper, now);
+                redisTemplate.delete(lockKey); // Clean up lock
+                return;
+            }
+
+            // CASE 3: Not yet due - re-add with proper scheduling
+            redisPriorityQueueService.addToQueue(job, scheduledTime);
+            redisTemplate.delete(lockKey); // Clean up lock
+            log.info("⏳ Job {} not due yet (scheduled: {})", job.getJobSeqId(), scheduledTime);
+
         } catch (Exception e) {
-            log.error("❌ Error during Redis job processing: {}", e.getMessage(), e);
+            log.error("❌ Failed to handle job: {}", e.getMessage(), e);
+            // Clean up lock if we have the wrapper
+            if (wrapper != null) {
+                String lockKey = "job:lock:" + wrapper.getJob().getJobSeqId() + ":" + wrapper.getTime();
+                redisTemplate.delete(lockKey);
+            }
         }
     }
 
-    @Scheduled(fixedRate = 60000)
-    public void debugPrintRedisQueue() {
-        List<String> jobs = redisPriorityQueueService.getAllJobs(); // assume this exists
-        for (String jobStr : jobs) {
-            try {
-                RedisJobWrapper wrapper = mapper.readValue(jobStr, RedisJobWrapper.class);
-                log.info("🔎 Job in Redis: ID={}, Time={}", wrapper.getJob().getJobSeqId(), wrapper.getTime());
-            } catch (Exception e) {
-                log.error("❌ Failed to parse Redis job: {}", jobStr);
+    private void handleExpiredJob(Job job) {
+        if ("RETRY".equalsIgnoreCase(expiryAction)) {
+            LocalDateTime retryTime = getClusterTime().plusSeconds(60);
+            redisPriorityQueueService.addToQueue(job, retryTime);
+            log.info("🔄 Retrying expired job {} after 60s", job.getJobSeqId());
+        } else {
+            cancelJob(job, "Job expired — scheduled too long ago");
+        }
+    }
+
+    private void handleDueJob(RedisJobWrapper wrapper, LocalDateTime now) {
+        try {
+            scheduledJobProducer.sendEvent(wrapper);
+            modifyJob.updateJobAndRun(
+                    wrapper.getJob().getId(),
+                    TaskStatus.SCHEDULED,
+                    RunStatus.QUEUED,
+                    null,
+                    wrapper.getTime()
+            );
+            log.info("📤 Job {} dispatched to Kafka", wrapper.getJob().getJobSeqId());
+        } catch (Exception e) {
+            log.error("❌ Kafka send failed for job {}, requeueing",
+                    wrapper.getJob().getJobSeqId(), e);
+            // Retry after delay
+            LocalDateTime retryTime = now.plusSeconds(kafkaRetryDelaySeconds);
+            redisPriorityQueueService.addToQueue(wrapper.getJob(), retryTime);
+        }
+    }
+
+    // Safe debug method - only sample a few jobs
+//    @Scheduled(fixedRateString = "${job.debug.interval.ms:60000}")
+//    public void debugPrintRedisQueue() {
+//        try {
+//            List<String> sampleJobs = redisPriorityQueueService.getSampleJobs(5); // Limit to 5
+//            sampleJobs.forEach(jobStr -> {
+//                try {
+//                    RedisJobWrapper wrapper = mapper.readValue(jobStr, RedisJobWrapper.class);
+//                    log.info("🔎 Redis sample - Job={} → Scheduled={}",
+//                            wrapper.getJob().getJobSeqId(), wrapper.getTime());
+//                } catch (Exception e) {
+//                    log.error("❌ Failed to parse Redis job: {}", jobStr);
+//                }
+//            });
+//        } catch (Exception e) {
+//            log.error("❌ Error sampling Redis queue: {}", e.getMessage());
+//        }
+//    }
+
+    private void cancelJob(Job job, String reason) {
+        boolean cancelled = modifyJob.updateJobAndRun(
+                job.getId(), TaskStatus.CANCELLED, RunStatus.FAILED, reason, null);
+        if (cancelled) {
+            log.info("🛑 Job '{}' cancelled → {}", job.getJobSeqId(), reason);
+        } else {
+            log.warn("⚠️ Failed to cancel job '{}'", job.getJobSeqId());
+        }
+    }
+
+    private LocalDateTime getClusterTime() {
+        return redisTemplate.execute((RedisConnection connection) -> {
+            Long millis = connection.time();
+            return Instant.ofEpochMilli(millis)
+                    .atZone(ZoneId.systemDefault())
+                    .toLocalDateTime();
+        });
+    }
+
+    // Graceful shutdown
+    @PreDestroy
+    public void shutdown() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
             }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 }
