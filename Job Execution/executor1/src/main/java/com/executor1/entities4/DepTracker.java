@@ -15,7 +15,7 @@ import java.util.List;
 @NoArgsConstructor          // no-args constructor
 @AllArgsConstructor         // all-args constructor
 public class DepTracker {
-
+    private String Id;
     private String jobId;           // Unique Job ID
     private String jobName;         // Human-readable name
     private JobStatus jobStatus;    // Enum: READY, RUNNING, SUCCESS, FAILED, etc.

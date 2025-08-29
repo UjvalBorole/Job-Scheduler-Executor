@@ -1,9 +1,5 @@
 package com.executor1.entities3;
-
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
@@ -11,15 +7,18 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+
 public class JobRun {
-    private Long id;
-    private Long jobId;
-    private RunStatus status;
+
+
+    private Long jobId;   // Foreign key reference
+
+    private RunStatus status; // QUEUED, RUNNING, SUCCESS, FAILED
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private LocalDateTime modifiedTime;
     private String executorId;
-    private int attemptNumber;
-    private String errorMsg;
+    private Integer attemptNumber;
+    private LocalDateTime executionTime;
+    private String errorMsg; // stored as TEXT
 }
-

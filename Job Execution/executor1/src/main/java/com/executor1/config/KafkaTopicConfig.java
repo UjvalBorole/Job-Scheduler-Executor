@@ -17,6 +17,17 @@ public class KafkaTopicConfig {
     @Value("${spring.kafka.topic.retryqueue}")
     private String retryQueueTopicName;
 
+    @Value("${spring.kafka.topic.deptrackerqueue}")
+    private String deptrackerTopicName;
+
+    @Bean
+    public NewTopic deptrackerQueueTopic() {
+        return TopicBuilder.name(deptrackerTopicName)
+                .partitions(5) // you said 5 partitions for each queue
+                .replicas(1)   // adjust replicas depending on cluster setup
+                .config("retention.ms", "3600000") // 1 hour retention
+                .build();
+    }
     @Bean
     public NewTopic runQueueTopic() {
         return TopicBuilder.name(runQueueTopicName)

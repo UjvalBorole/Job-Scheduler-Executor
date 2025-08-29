@@ -83,4 +83,10 @@ public class JobController {
             return ResponseEntity.badRequest().body("❌ Failed to modify job: " + e.getMessage());
         }
     }
+
+    // ✅ GET /api/jobs/dependency/{dependency}
+    @GetMapping("/dependency/{dependency}")
+    public List<Job> getJobsByDependency(@PathVariable String dependency) {
+        return jobService.getJobsByDependency(dependency);
+    }
 }

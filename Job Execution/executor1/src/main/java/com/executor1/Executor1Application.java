@@ -15,16 +15,16 @@ public class Executor1Application {
 		SpringApplication.run(Executor1Application.class, args);
 	}
 
-	@Bean
-	CommandLineRunner run(RedisPriorityQueue queue) {
-		return args -> {
-			queue.addJobToDependency("jobparser1", "job1", LocalDateTime.now().plusMinutes(1));
-			queue.addJobToDependency("jobparser1", "job2", LocalDateTime.now().plusMinutes(2));
-			queue.addJobToDependency("jobparser2", "job3", LocalDateTime.now().plusMinutes(3));
-
-			System.out.println(queue.getJobsAsObjects("jobparser1"));
-			System.out.println(queue.getJobsAsObjects("jobparser2"));
-		};
-	}
+//	@Bean
+//	CommandLineRunner run(RedisPriorityQueue queue) {
+//		return args -> {
+//			queue.addJobToDependency("jobparser1", "job1", LocalDateTime.now().plusMinutes(1));
+//			queue.addJobToDependency("jobparser1", "job2", LocalDateTime.now().plusMinutes(2));
+//			queue.addJobToDependency("jobparser2", "job3", LocalDateTime.now().plusMinutes(3));
+//
+//			System.out.println(queue.getJobsAsObjects("jobparser1"));
+//			System.out.println(queue.getJobsAsObjects("jobparser2"));
+//		};
+//	}
 }
 

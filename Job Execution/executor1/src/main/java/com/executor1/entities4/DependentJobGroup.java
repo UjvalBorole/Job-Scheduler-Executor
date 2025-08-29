@@ -9,5 +9,7 @@ import java.time.LocalDateTime;
 @AllArgsConstructor
 public class DependentJobGroup {
     private String jobId;             // Single job
+    private String jobName;
     private LocalDateTime scheduleTime; // Its execution time
+    private Integer retries;
 }

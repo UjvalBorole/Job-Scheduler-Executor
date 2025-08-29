@@ -5,5 +5,6 @@ public enum RunStatus {
     QUEUED,
     RUNNING,
     SUCCESS,
-    FAILED
+    FAILED,
+    RETRY
 }

@@ -7,6 +7,7 @@ import com.JobConsumerSvc.entities4.JobStatus;
 import com.JobConsumerSvc.repositories.DepTrackerRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -119,5 +120,14 @@ public class DepTrackerService {
     public List<DepTracker> searchByJobName(String jobName) {
         log.info("Searching jobs by jobName containing '{}'", jobName);
         return depTrackerRepository.findByJobNameContainingIgnoreCase(jobName);
+    }
+
+    @KafkaListener(
+            topics = "${spring.kafka.topic.deptrackerqueue}",
+            groupId = "deptracker-group",
+            containerFactory = "DepTrackerDTOKafkaListenerContainerFactory"
+    )
+    public void consumeDepTracker(DepTrackerDTO depTracker) {
+        createDepTracker(depTracker);
     }
 }

@@ -26,7 +26,7 @@ public class RedisPriorityQueue {
             .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 
     // -------- Existing methods --------
-    public void addJobToDependency(String dependency, String jobId, LocalDateTime scheduleTime) {
+    public void addJobToDependency(String dependency, String jobId, LocalDateTime scheduleTime,int rit) {
         try {
             String key = "dep_queue:" + dependency;
             double score = scheduleTime.toEpochSecond(ZoneOffset.UTC);
@@ -34,6 +34,7 @@ public class RedisPriorityQueue {
             DependentJobGroup jobGroup = DependentJobGroup.builder()
                     .jobId(jobId)
                     .scheduleTime(scheduleTime)
+                    .retries(rit)
                     .build();
 
             String json = mapper.writeValueAsString(jobGroup);
@@ -132,4 +133,12 @@ public class RedisPriorityQueue {
             return false;
         }
     }
+    public void markJobDone(String jobName) {
+        redisTemplate.opsForSet().add("done_jobs", jobName);
+    }
+
+    public boolean isJobDone(String jobName) {
+        return Boolean.TRUE.equals(redisTemplate.opsForSet().isMember("done_jobs", jobName));
+    }
+
 }

@@ -210,4 +210,10 @@ public class JobService {
     public Job getLatestJob() {
         return jobRepository.findFirstByOrderByModifiedTimeDesc();
     }
+
+    public List<Job> getJobsByDependency(String dependency) {
+        return jobRepository.findByDependenciesContaining(dependency);
+    }
+
+
 }
