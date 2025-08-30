@@ -33,7 +33,9 @@ public class Payload {
 
     @Column(columnDefinition = "TEXT")
     private String errorMsg;
-    private String path;
+    private String path;  //this has the file path that need to be executed
+
+//    private String command; // this field has the pipleline
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "job_id")

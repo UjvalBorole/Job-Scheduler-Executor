@@ -23,4 +23,5 @@ public class Payload {
     private Integer attemptNumber;
     private String errorMsg;
     private String path;
+
 }

@@ -68,6 +68,21 @@
 			<version>9.1.6</version>
 		</dependency>
 
+
+			<!-- Spring Boot Starter -->
+			<dependency>
+				<groupId>org.springframework.boot</groupId>
+				<artifactId>spring-boot-starter</artifactId>
+			</dependency>
+
+			<!-- Groovy for parsing Jenkinsfile -->
+			<dependency>
+				<groupId>org.codehaus.groovy</groupId>
+				<artifactId>groovy</artifactId>
+				<version>3.0.21</version>
+			</dependency>
+
+
 		<!-- Cron / Scheduler -->
 <!--		<dependency>-->
 <!--			<groupId>org.springframework.boot</groupId>-->

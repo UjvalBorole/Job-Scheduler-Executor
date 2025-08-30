@@ -1,0 +1,41 @@
+
+==================================================
+[2025-08-30T22:46:16.365205500] Starting: Stage-1_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
+==================================================
+Running command: python D:/lap/java/dsa/path/to/extract.py
+[2025-08-30T22:46:16.428942300] 2025-08-30 22:46:16,429 - INFO - Starting data extraction
+[2025-08-30T22:46:16.429942] 2025-08-30 22:46:16,429 - INFO - Extracted 3 records
+[2025-08-30T22:46:16.430941800] 2025-08-30 22:46:16,429 - INFO - Data written to data\extracted_data.json
+[2025-08-30T22:46:16.430941800] EXTRACT_SUCCESS: data\extracted_data.json
+--------------------------------------------------
+[2025-08-30T22:46:16.435456600] Finished: Stage-1_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py (exit code 0)
+--------------------------------------------------
+
+
+==================================================
+[2025-08-30T22:46:16.438453200] Starting: Stage-2_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
+==================================================
+Running command: python D:/lap/java/dsa/path/to/transform.py
+[2025-08-30T22:46:16.491098900] 2025-08-30 22:46:16,491 - INFO - Starting data transformation
+[2025-08-30T22:46:16.492088] 2025-08-30 22:46:16,492 - INFO - Transforming 3 records
+[2025-08-30T22:46:16.493088100] 2025-08-30 22:46:16,493 - INFO - Transformed data written to data\transformed_data.json
+[2025-08-30T22:46:16.494090400] TRANSFORM_SUCCESS: data\transformed_data.json
+--------------------------------------------------
+[2025-08-30T22:46:16.498089200] Finished: Stage-2_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py (exit code 0)
+--------------------------------------------------
+
+
+==================================================
+[2025-08-30T22:46:16.500089400] Starting: Stage-3_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
+==================================================
+Running command: python D:/lap/java/dsa/path/to/load.py
+[2025-08-30T22:46:16.551095] 2025-08-30 22:46:16,551 - INFO - Starting data loading
+[2025-08-30T22:46:16.564090300] 2025-08-30 22:46:16,563 - INFO - Loading 3 records
+[2025-08-30T22:46:16.564090300] 2025-08-30 22:46:16,564 - INFO - Data loaded successfully to output\final_data.json
+[2025-08-30T22:46:16.564090300] 2025-08-30 22:46:16,564 - INFO - Summary report generated at output\load_summary.json
+[2025-08-30T22:46:16.565089] 2025-08-30 22:46:16,564 - ERROR - Loading failed: name 'prin' is not defined
+--------------------------------------------------
+[2025-08-30T22:46:16.570088300] Finished: Stage-3_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py (exit code 1)
+--------------------------------------------------
+
+ERROR: Execution stopped due to error in stage: Stage-3_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
