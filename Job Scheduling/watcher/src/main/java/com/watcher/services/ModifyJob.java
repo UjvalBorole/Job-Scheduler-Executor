@@ -1,7 +1,6 @@
-package com.watcher.utils;
+package com.watcher.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.watcher.Config.JobRunCacheService;
 import com.watcher.entities3.JobRunCacheDTO;
 import com.watcher.entities1.TaskStatus;
 import com.watcher.entities3.RunStatus;
@@ -95,7 +94,7 @@ public class ModifyJob {
 
             // ✅ Save back into Redis (JSON overwrite)
             JobRunCacheDTO updated = jobRunCacheService.update(jobId, existing);
-            log.info("✅ Updated JobRun {} to status={}, executionTime={}", jobId, newStatus, executionTime);
+            log.info("✅ Update JobRun {} to status={}, executionTime={}", jobId, newStatus, executionTime);
 
             return true;
         } catch (Exception e) {

@@ -1,7 +1,5 @@
 package com.executor1.service;
 
-import com.executor1.config.DepTrackerClient;
-import com.executor1.config.RedisPriorityQueue;
 import com.executor1.entities1.Job;
 import com.executor1.entities1.RedisJobWrapper;
 import com.executor1.entities1.TaskStatus;
@@ -11,7 +9,6 @@ import com.executor1.entities4.DependentJobGroup;
 import com.executor1.entities4.ExecutionResult;
 import com.executor1.entities4.JobStatus;
 import com.executor1.utility.CronMetadataExtractor;
-import com.executor1.utility.ModifyJob;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.admin.NewTopic;
@@ -25,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -38,7 +36,7 @@ public class JobService {
     private final DepTrackerClient depTrackerClient;
     private final JobRunService jobRunService;
     private final ExecutorService executorService;
-
+    private final CancelReqRepository cancelReqRepository;
 
     private final NewTopic runQueueTopic;
     private final NewTopic waitQueueTopic;
@@ -47,6 +45,8 @@ public class JobService {
 
     private final KafkaTemplate<String, RedisJobWrapper> redisJobWrapperKafkaTemplate;
     private final KafkaTemplate<String, DepTracker> depTrackerKafkaTemplate;
+
+    LocalDateTime time = LocalDateTime.now();
 
     /* =========================================================
      * Kafka send helpers
@@ -78,9 +78,10 @@ public class JobService {
                     .jobId(String.valueOf(jr.getJobId()))
                     .jobName(job.getName())
                     .jobStatus(status)
-                    .startTime(jr.getStartTime())
+                    .startTime(time)
                     .endTime(LocalDateTime.now())
                     .errorMessage(errorMsg)
+                    .retryCount(jr.getAttemptNumber())
                     .maxRetries(job.getRetries())
                     .dependencies(job.getDependencies())
                     .retryCount(jr.getAttemptNumber())
@@ -118,12 +119,15 @@ public class JobService {
             retryJob.setRetries(retriesLeft);
             retryJob.setMeta(errorMessage);
             event.setJob(retryJob);
-
+            JobRun jobRun = new JobRun();
+            jobRun.setAttemptNumber(retriesLeft);
+            jobRunService.patchUpdate(job.getId(),jobRun);
             saveJobRun(job, JobStatus.RETRYING, errorMessage);
             sendEvent(event, retryQueueTopic);
 
             log.warn("🔄 Job {} failed, requeued with {} retries left", job.getId(), retriesLeft);
         } else {
+            cancelReqRepository.deleteById(String.valueOf(job.getId()));
             saveJobRun(job, JobStatus.FAILED, errorMessage);
             modifyJob.updateJobAndRun(job.getId(), TaskStatus.CANCELLED, "Retries exhausted: " + errorMessage);
             log.error("⛔ Job {} failed permanently after retries exhausted", job.getId());
@@ -139,8 +143,11 @@ public class JobService {
         if (result.getStatus() == JobStatus.SUCCESS) {
             saveJobRun(job, JobStatus.SUCCESS, null);
             releaseWaitingDependents(job);
-            setNextCronOrSuccess(job);
-        } else {
+            setNextCronOrSuccess(job,TaskStatus.SUCCESS);
+        } else if(result.getStatus() == JobStatus.PARTIAL){
+            saveJobRun(job, JobStatus.PARTIAL, result.getErrorMessage());
+            setNextCronOrSuccess(job,TaskStatus.PAUSED);
+        }else{
             handleRetry(event, job, result.getErrorMessage());
         }
     }
@@ -153,6 +160,7 @@ public class JobService {
         if (job == null) return;
 
         if (job.getRetries() <= 0) {
+            cancelReqRepository.deleteById(String.valueOf(job.getId()));
             saveJobRun(job, JobStatus.FAILED, "No retries left");
             return;
         }
@@ -188,7 +196,7 @@ public class JobService {
                 }
             }
         }
-
+//         time = LocalDateTime.now();
         // 3️⃣ All deps satisfied
         runJob(job, event);
     }
@@ -200,39 +208,51 @@ public class JobService {
         String depName = finishedJob.getName();
         List<DependentJobGroup> waitingJobs = redisPriorityQueue.getJobsAsObjects(depName);
 
-        redisPriorityQueue.deleteDependency(depName); // cleanup
+        // cleanup
+        redisPriorityQueue.deleteDependency(depName);
+        log.info("Waiting job Released for Dependency of {} ",depName);
 
-        for (DependentJobGroup djg : waitingJobs) {
-            RedisJobWrapper wrapper = new RedisJobWrapper();
-            wrapper.setId(Long.valueOf(djg.getJobId()));
-            wrapper.setTime(djg.getScheduleTime());
+        // jobs depending on this dep
+        List<Job> allJobs = depTrackerClient.getJobsByDependency(depName);
 
-            Job depJob = new Job();
-            depJob.setId(Long.valueOf(djg.getJobId()));
-            depJob.setName(djg.getJobName()); // ✅ use stored name
-            depJob.setRetries(djg.getRetries());
-            depJob.setScheduleTime(djg.getScheduleTime());
+        // map jobId -> DependentJobGroup for quick lookup
+        Map<Long, DependentJobGroup> waitingJobMap = waitingJobs.stream()
+                .collect(Collectors.toMap(
+                        djg -> Long.valueOf(djg.getJobId()), // key = jobId as Long
+                        djg -> djg                           // value = whole object
+                ));
+            System.out.println("Waiting Jobs"+waitingJobMap);
+        for (Job job : allJobs) {
+            DependentJobGroup djg = waitingJobMap.get(job.getId());
+            if (djg != null) {
+                RedisJobWrapper wrapper = new RedisJobWrapper();
+                wrapper.setId(job.getId());
 
-            wrapper.setJob(depJob);
+                // ✅ set schedule time from waiting job group
+                job.setScheduleTime(djg.getScheduleTime());
 
-            sendEvent(wrapper, waitQueueTopic);
-            log.info("📤 Released dependent job {} back to WAIT queue", depJob.getId());
+                wrapper.setJob(job);
+                System.out.println("RedisJobWrapper = "+wrapper);
+                sendEvent(wrapper, waitQueueTopic);
+                log.info("📤 Released dependent job {} back to WAIT queue", job.getId());
+            }
         }
     }
+
 
     /* =========================================================
      * Cron Handling
      * ========================================================= */
-    private void setNextCronOrSuccess(Job job) {
+    private void setNextCronOrSuccess(Job job,TaskStatus status) {
         try {
             List<Map.Entry<String, LocalDateTime>> nextRuns =
                     cronMetadataExtractor.getFormattedAndLocalExecutionTimes(job.getCronExpression(), 5);
 
             if (nextRuns != null && !nextRuns.isEmpty()) {
-                modifyJob.updateJobAndRun(job.getId(), TaskStatus.READY,
-                        "Ready for next run at " + nextRuns.get(0).getValue());
+                modifyJob.updateJobAndRun(job.getId(), status,
+                        status+ " for next run at " + nextRuns.get(0).getValue());
             } else {
-                modifyJob.updateJobAndRun(job.getId(), TaskStatus.SUCCESS, "No future runs → marked SUCCESS");
+                modifyJob.updateJobAndRun(job.getId(), status, "No future runs → marked "+status);
             }
         } catch (Exception e) {
             log.error("❌ Cron evaluation failed for job {}: {}", job.getId(), e.getMessage());

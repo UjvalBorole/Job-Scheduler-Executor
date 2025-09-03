@@ -1,7 +1,6 @@
 package com.watcher.services;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.watcher.Config.RedisPriorityQueueService;
 import com.watcher.Config.ScheduledJobProducer;
 import com.watcher.entities1.Job;
 import com.watcher.entities1.RedisJobWrapper;
@@ -9,12 +8,10 @@ import com.watcher.entities1.TaskStatus;
 import com.watcher.entities3.RunStatus;
 import com.watcher.utils.CronMetadataExtractor;
 import com.watcher.utils.FetchLatestJob;
-import com.watcher.utils.ModifyJob;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -100,78 +97,150 @@ public class JobService {
         }
     }
 
-    // ===== Process jobs due/expired =====
-    @Scheduled(fixedRateString = "${job.processor.interval.ms:30000}")
-    @SchedulerLock(name = "processScheduledJobsFromRedis", lockAtLeastFor = "10s", lockAtMostFor = "1m")
-    public void processScheduledJobsFromRedis() {
-        try {
-            List<String> jobs = redisPriorityQueueService.pollTopJobsAtomically(batchSize);
-            if (jobs.isEmpty()) return;
+//    // ===== Process jobs due/expired =====
+//    @Scheduled(fixedRateString = "${job.processor.interval.ms:30000}")
+//    @SchedulerLock(name = "processScheduledJobsFromRedis", lockAtLeastFor = "10s", lockAtMostFor = "1m")
+//    public void processScheduledJobsFromRedis() {
+//        try {
+//            List<String> jobs = redisPriorityQueueService.pollTopJobsAtomically(batchSize);
+//            if (jobs.isEmpty()) return;
+//
+//            for (String jobStr : jobs) {
+//                executor.submit(() -> {
+//                    try {
+//                        handleJob(jobStr);
+//                    } catch (Exception e) {
+//                        log.error("❌ Error processing job: {}", e.getMessage(), e);
+//                    }
+//                });
+//            }
+//        } catch (Exception e) {
+//            log.error("❌ Error during Redis job batch processing: {}", e.getMessage(), e);
+//        }
+//    }
+//
+//    private void handleJob(String jobStr) {
+//        RedisJobWrapper wrapper = null;
+//        try {
+//            wrapper = mapper.readValue(jobStr, RedisJobWrapper.class);
+//            Job job = wrapper.getJob();
+//            LocalDateTime scheduledTime = wrapper.getTime();
+//            LocalDateTime now = getClusterTime();
+//
+//            // Idempotency key with timeout to prevent deadlocks
+//            String lockKey = "job:lock:" + job.getJobSeqId() + ":" + scheduledTime;
+//            Boolean lockAcquired = redisTemplate.opsForValue().setIfAbsent(
+//                    lockKey, "1", Duration.ofSeconds(lockTimeoutSeconds));
+//
+//            if (lockAcquired == null || !lockAcquired) {
+//                log.warn("⚠️ Skipping duplicate job {} at {}", job.getJobSeqId(), scheduledTime);
+//                // Re-add to queue if still valid
+//                if (scheduledTime.isAfter(now)) {
+//                    redisPriorityQueueService.addToQueue(job, scheduledTime);
+//                }
+//                return;
+//            }
+//
+//            LocalDateTime expiryCutoff = now.minusMinutes(expiryThresholdMinutes);
+//
+//            // CASE 1: Expired job
+//            if (scheduledTime.isBefore(expiryCutoff)) {
+//                handleExpiredJob(job);
+//                redisTemplate.delete(lockKey); // Clean up lock
+//                return;
+//            }
+//
+//            // CASE 2: Due now or in the past (within threshold)
+//            if (!scheduledTime.isAfter(now)) {
+//                handleDueJob(wrapper, now);
+//                redisTemplate.delete(lockKey); // Clean up lock
+//                return;
+//            }
+//
+//            // CASE 3: Not yet due - re-add with proper scheduling
+//            redisPriorityQueueService.addToQueue(job, scheduledTime);
+//            redisTemplate.delete(lockKey); // Clean up lock
+//            log.info("⏳ Job {} not due yet (scheduled: {})", job.getJobSeqId(), scheduledTime);
+//
+//        } catch (Exception e) {
+//            log.error("❌ Failed to handle job: {}", e.getMessage(), e);
+//            // Clean up lock if we have the wrapper
+//            if (wrapper != null) {
+//                String lockKey = "job:lock:" + wrapper.getJob().getJobSeqId() + ":" + wrapper.getTime();
+//                redisTemplate.delete(lockKey);
+//            }
+//        }
+//    }
 
-            for (String jobStr : jobs) {
-                executor.submit(() -> {
-                    try {
-                        handleJob(jobStr);
-                    } catch (Exception e) {
-                        log.error("❌ Error processing job: {}", e.getMessage(), e);
-                    }
-                });
-            }
-        } catch (Exception e) {
-            log.error("❌ Error during Redis job batch processing: {}", e.getMessage(), e);
+@Scheduled(fixedRateString = "${job.processor.interval.ms:30000}")
+@SchedulerLock(name = "processScheduledJobsFromRedis", lockAtLeastFor = "10s", lockAtMostFor = "1m")
+public void processScheduledJobsFromRedis() {
+    try {
+        List<String> jobKeys = redisPriorityQueueService.pollTopJobsAtomically(batchSize);
+        if (jobKeys.isEmpty()) return;
+
+        for (String jobKey : jobKeys) {
+            executor.submit(() -> {
+                try {
+                    handleJob(jobKey);
+                } catch (Exception e) {
+                    log.error("❌ Error processing job {}: {}", jobKey, e.getMessage(), e);
+                }
+            });
         }
+    } catch (Exception e) {
+        log.error("❌ Error during Redis job batch processing: {}", e.getMessage(), e);
     }
+}
 
-    private void handleJob(String jobStr) {
-        RedisJobWrapper wrapper = null;
+    private void handleJob(String jobKey) {
+        String lockKey = "job:lock:" + jobKey;
+        boolean lockAcquired = Boolean.TRUE.equals(
+                redisTemplate.opsForValue().setIfAbsent(lockKey, "1", Duration.ofSeconds(lockTimeoutSeconds))
+        );
+
+        if (!lockAcquired) {
+            log.warn("⚠️ Skipping duplicate job {}", jobKey);
+            return; // ❌ Don’t re-add, just skip
+        }
+
         try {
-            wrapper = mapper.readValue(jobStr, RedisJobWrapper.class);
+            // Fetch job payload from HASH
+            String hashKey = "job:data:" + jobKey;
+            String payload = (String) redisTemplate.opsForHash().get(hashKey, "payload");
+            if (payload == null) {
+                log.warn("⚠️ No payload found for {}", jobKey);
+                return;
+            }
+
+            RedisJobWrapper wrapper = mapper.readValue(payload, RedisJobWrapper.class);
             Job job = wrapper.getJob();
             LocalDateTime scheduledTime = wrapper.getTime();
             LocalDateTime now = getClusterTime();
 
-            // Idempotency key with timeout to prevent deadlocks
-            String lockKey = "job:lock:" + job.getJobSeqId() + ":" + scheduledTime;
-            Boolean lockAcquired = redisTemplate.opsForValue().setIfAbsent(
-                    lockKey, "1", Duration.ofSeconds(lockTimeoutSeconds));
-
-            if (lockAcquired == null || !lockAcquired) {
-                log.warn("⚠️ Skipping duplicate job {} at {}", job.getJobSeqId(), scheduledTime);
-                // Re-add to queue if still valid
-                if (scheduledTime.isAfter(now)) {
-                    redisPriorityQueueService.addToQueue(job, scheduledTime);
-                }
-                return;
-            }
-
             LocalDateTime expiryCutoff = now.minusMinutes(expiryThresholdMinutes);
 
-            // CASE 1: Expired job
+            // CASE 1: Expired
             if (scheduledTime.isBefore(expiryCutoff)) {
                 handleExpiredJob(job);
-                redisTemplate.delete(lockKey); // Clean up lock
                 return;
             }
 
-            // CASE 2: Due now or in the past (within threshold)
+            // CASE 2: Due now
             if (!scheduledTime.isAfter(now)) {
                 handleDueJob(wrapper, now);
-                redisTemplate.delete(lockKey); // Clean up lock
                 return;
             }
 
-            // CASE 3: Not yet due - re-add with proper scheduling
+            // CASE 3: Not yet due → just put back in ZSET
             redisPriorityQueueService.addToQueue(job, scheduledTime);
-            redisTemplate.delete(lockKey); // Clean up lock
             log.info("⏳ Job {} not due yet (scheduled: {})", job.getJobSeqId(), scheduledTime);
 
         } catch (Exception e) {
-            log.error("❌ Failed to handle job: {}", e.getMessage(), e);
-            // Clean up lock if we have the wrapper
-            if (wrapper != null) {
-                String lockKey = "job:lock:" + wrapper.getJob().getJobSeqId() + ":" + wrapper.getTime();
-                redisTemplate.delete(lockKey);
-            }
+            log.error("❌ Failed to handle job {}: {}", jobKey, e.getMessage(), e);
+        } finally {
+            // Always release lock
+            redisTemplate.delete(lockKey);
         }
     }
 

@@ -1,12 +1,7 @@
 package com.executor1;
 
-import com.executor1.config.RedisPriorityQueue;
-import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.context.annotation.Bean;
-
-import java.time.LocalDateTime;
 
 @SpringBootApplication
 public class Executor1Application {

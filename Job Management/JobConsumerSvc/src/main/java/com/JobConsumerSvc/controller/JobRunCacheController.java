@@ -23,7 +23,7 @@ public class JobRunCacheController {
     }
 
     @GetMapping("/{jobId}")
-    public ResponseEntity<?> getByJobId(@PathVariable Long jobId) {
+    public ResponseEntity<JobRunCacheDTO> getByJobId(@PathVariable Long jobId) {
         JobRunCacheDTO dto = service.get(jobId);
         return dto != null ? ResponseEntity.ok(dto) : ResponseEntity.notFound().build();
     }

@@ -1,4 +1,4 @@
-package com.executor1.config;
+package com.executor1.service;
 
 import com.executor1.entities1.Job;
 import com.executor1.entities4.DepTracker;
