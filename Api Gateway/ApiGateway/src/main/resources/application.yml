@@ -1,57 +1,107 @@
+#  http://localhost:8091/actuator/gateway/routes #--check this uri to see the all endpoints
+#  http://localhost:8091/actuator/circuitbreaker #--check this uri to see the detail about the circuit breaker status some thing
+
 spring:
   cloud:
     gateway:
-      routes:
-#        - id: executor1
-#          uri: lb://executor1
-#          predicates:
-#            - Path=/users/**
+      server:
+        webflux:
+          routes:
+            - id: JobConsumerSvc
+              uri: lb://JOBCONSUMERSVC
+              predicates:
+                - Path=/api/deptracker/**,/jobs/jobsvc/**,/jobruns/**,/payloads/jobsvc/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"   # Rate limiting based on client IP
+                    redis-rate-limiter.replenishRate: 5  # Requests per second
+                    redis-rate-limiter.burstCapacity: 10 # Max burst capacity
+                - name: Retry
+                  args:
+                    retries: 3                  # Number of retry attempts
+                    statuses: BAD_GATEWAY, GATEWAY_TIMEOUT, INTERNAL_SERVER_ERROR
+                    methods: GET, POST          # Only retry for these HTTP methods
+                    backoff:
+                      firstBackoff: 500ms       # Initial wait before retry
+                      maxBackoff: 5s            # Max wait between retries
+                      factor: 2                 # Exponential backoff multiplier
+                      basedOnPreviousValue: true
+                - name: CircuitBreaker
+                  args:
+                    name: jobConsumerCircuitBreaker
+                    fallbackUri: forward:/fallback/jobconsumer
 
-        - id: JobConsumerSvc
-          uri: lb://JOBCONSUMERSVC
-          predicates:
-            - Path=/api/deptracker/**,/jobs/jobsvc/**,/jobruns/**,/payloads/jobsvc/**
+            - id: JobService
+              uri: lb://JOBSERVICE
+              predicates:
+                - Path=/cancel/**,/jobs/**,/payloads/**
 
-        - id: JobService
-          uri: lb://JOBSERVICE
-          predicates:
-            - Path=/cancel/**,/jobs/**,/payloads/**
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: jobServiceCircuitBreaker
+                    fallbackUri: forward:/fallback/jobservice
 
-#        - id: watcher
-#          uri: lb://watcher
-#          predicates:
-#            - Path=/cancel/**,/jobs/**,/payloads/**
+            - id: test
+              uri: https://httpbin.org
+              predicates:
+                - Path=/test/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"
+                    redis-rate-limiter.replenishRate: 3
+                    redis-rate-limiter.burstCapacity: 5
+                - name: Retry
+                  args:
+                    retries: 2
+                    statuses: BAD_GATEWAY, GATEWAY_TIMEOUT
+                    methods: GET
+                - name: CircuitBreaker
+                  args:
+                    name: testCircuitBreaker
+                    fallbackUri: forward:/fallback/test
 
+          discovery: # that is used to import directly all services from service discovery not does any configuration
+            locator:
+              enabled: false
+              lower-case-service-id: true
+          httpclient: #--Global Timeout Config
+            response-timeout: 5s #-After the connection is established, Gateway will wait at most 5 seconds for the full HTTP response
+            connect-timeout: 2000 #Gateway will wait at most 2 second while trying to establish a TCP connection to the downstream service
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
 
-        - id: test
-          uri: https://httpbin.org
-          predicates:
-            - Path=/test/**
+  endpoint:
+    gateway:
+      access: unrestricted
+    health:
+      show-details: always
 
+  info:
+    env:
+      enabled: true
 
-#  config:
-#    import: "optional:configserver:http://localhost:8085"
-
-  ##octa details
-#okta:
-#  oauth2:
-#    issuer: https://dev-15726617.okta.com/oauth2/default
-#    audience: api://default
-#    client-id: 0oaosp0mw1gJxz4Fo5d7
-#    client-secret: BOdze5qN3wlILmU0sHaqjpfWFPmoB59L7-a22FE5--geAu0KjRounRDS_X_v-srN
-#    scopes: openid, profile, email, offline_access
-
-#spring:
-#  security:
-#    oauth2:
-#      client:
-#        registration:
-#          okta:
-#            client-id: 0oaosp0mw1gJxz4Fo5d7
-#            client-secret: BOdze5qN3wlILmU0sHaqjpfWFPmoB59L7-a22FE5--geAu0KjRounRDS_X_v-srN
-#            scope: openid,profile,email,offline_access
-#            redirect-uri: "{baseUrl}/login/oauth2/code/okta"
-#            client-name: Okta
-#        provider:
-#          okta:
-#            issuer-uri: https://dev-15726617.okta.com/oauth2/default
+#Circuit-Breaker Config
+resilience4j:
+  circuitbreaker:
+    instances:
+      jobConsumerCircuitBreaker:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+      jobServiceCircuitBreaker:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+      testCircuitBreaker:
+        register-health-indicator: true
+        sliding-window-size: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 5s
