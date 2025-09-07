@@ -7,7 +7,6 @@ import com.watcher.entities1.RedisJobWrapper;
 import com.watcher.entities1.TaskStatus;
 import com.watcher.entities3.RunStatus;
 import com.watcher.utils.CronMetadataExtractor;
-import com.watcher.utils.FetchLatestJob;
 import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

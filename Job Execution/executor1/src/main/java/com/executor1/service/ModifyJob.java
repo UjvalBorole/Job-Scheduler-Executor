@@ -1,8 +1,8 @@
 package com.executor1.service;
-import com.executor1.entities1.TaskStatus;
 
+import com.executor1.entities1.TaskStatus;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -16,45 +16,43 @@ public class ModifyJob {
 
     private final WebClient webClient;
 
-
-    @Autowired
-    public ModifyJob(WebClient webClient) {
-        this.webClient = webClient;
+    public ModifyJob(WebClient.Builder webClientBuilder,
+                     @Value("${webclient.base-url}") String baseUrl) {
+        this.webClient = webClientBuilder.baseUrl(baseUrl).build();
     }
 
-
     /**
-     * Update job run details (status, timestamps, error message, etc.)
+     * Update job run details (status, error message, etc.)
      */
     public boolean updateJobAndRun(Long jobId,
                                    TaskStatus jobStatus,
-                                   String errorMessage
-
-    ) {
+                                   String errorMessage) {
         try {
-            // 🛠 Dynamically build Job fields
             Map<String, Object> jobPatchBody = new HashMap<>();
-            if (jobStatus != null) jobPatchBody.put("status", jobStatus);
-            System.out.println("JobStatus "+ jobStatus);
+            if (jobStatus != null) {
+                jobPatchBody.put("status", jobStatus);
+                log.info("JobStatus = {}", jobStatus);
+            }
+            if (errorMessage != null) {
+                jobPatchBody.put("errorMessage", errorMessage);
+            }
 
-            // 🔄 Patch Job
             if (!jobPatchBody.isEmpty()) {
                 String jobResp = webClient.patch()
-                        .uri("/jobs/{id}", jobId)
+                        .uri("/jobs/jobsvc/{id}", jobId) // relative path
                         .contentType(MediaType.APPLICATION_JSON)
                         .bodyValue(jobPatchBody)
                         .retrieve()
                         .bodyToMono(String.class)
                         .block();
 
-                System.out.println("✅ Patched Job: " + jobResp);
+                log.info("✅ Patched Job {}: {}", jobId, jobResp);
             }
 
             return true;
         } catch (Exception e) {
-            System.err.println("❌ Error patching job/run: " + e.getMessage());
+            log.error("❌ Error patching job/run for jobId={}", jobId, e);
             return false;
         }
     }
-
 }

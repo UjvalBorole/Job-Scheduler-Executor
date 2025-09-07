@@ -1,0 +1,86 @@
+Starting execution for job: DataIngestion (ID: 3)
+
+==================================================
+[2025-09-07T11:22:33.022017200] Starting: Stage-1_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
+==================================================
+[2025-09-07T11:22:33.023010900] Running command (Attempt 1): python D:/lap/java/dsa/path/to/extract.py
+[2025-09-07T11:22:33.092086] 2025-09-07 11:22:33,092 - INFO - Starting data extraction
+[2025-09-07T11:22:33.093098500] 2025-09-07 11:22:33,092 - INFO - Extracted 3 records
+[2025-09-07T11:22:33.093098500] 2025-09-07 11:22:33,093 - INFO - Data written to data\extracted_data.json
+[2025-09-07T11:22:33.094009400] EXTRACT_SUCCESS: data\extracted_data.json
+--------------------------------------------------
+[2025-09-07T11:22:33.098008900] Finished: Stage-1_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py (exit code 0)
+--------------------------------------------------
+
+
+==================================================
+[2025-09-07T11:22:33.099009700] Starting: Stage-2_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
+==================================================
+[2025-09-07T11:22:33.099009700] Running command (Attempt 1): python D:/lap/java/dsa/path/to/transform.py
+[2025-09-07T11:22:33.155999100] 2025-09-07 11:22:33,156 - INFO - Starting data transformation
+[2025-09-07T11:22:33.156996400] 2025-09-07 11:22:33,157 - INFO - Transforming 3 records
+[2025-09-07T11:22:33.157998800] 2025-09-07 11:22:33,158 - INFO - Transformed data written to data\transformed_data.json
+[2025-09-07T11:22:33.157998800] TRANSFORM_SUCCESS: data\transformed_data.json
+--------------------------------------------------
+[2025-09-07T11:22:33.163347900] Finished: Stage-2_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py (exit code 0)
+--------------------------------------------------
+
+
+==================================================
+[2025-09-07T11:22:33.163347900] Starting: Stage-3_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
+==================================================
+[2025-09-07T11:22:33.163347900] Running command (Attempt 1): python D:/lap/java/dsa/path/to/load.py
+[2025-09-07T11:22:33.216865700] 2025-09-07 11:22:33,216 - INFO - Starting data loading
+[2025-09-07T11:22:33.229865800] 2025-09-07 11:22:33,230 - INFO - Loading 3 records
+[2025-09-07T11:22:33.230867400] 2025-09-07 11:22:33,231 - INFO - Data loaded successfully to output\final_data.json
+[2025-09-07T11:22:33.230867400] 2025-09-07 11:22:33,231 - INFO - Summary report generated at output\load_summary.json
+[2025-09-07T11:22:33.230867400] LOAD_SUCCESS: output\final_data.json
+[2025-09-07T11:22:33.230867400] SUMMARY: output\load_summary.json
+--------------------------------------------------
+[2025-09-07T11:22:33.237103800] Finished: Stage-3_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py (exit code 0)
+--------------------------------------------------
+
+Execution completed successfully.
+Starting execution for job: DataIngestion (ID: 3)
+
+==================================================
+[2025-09-07T11:22:33.522373800] Starting: Stage-1_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
+==================================================
+[2025-09-07T11:22:33.522373800] Running command (Attempt 1): python D:/lap/java/dsa/path/to/extract.py
+[2025-09-07T11:22:33.587096] 2025-09-07 11:22:33,587 - INFO - Starting data extraction
+[2025-09-07T11:22:33.587096] 2025-09-07 11:22:33,587 - INFO - Extracted 3 records
+[2025-09-07T11:22:33.587096] 2025-09-07 11:22:33,587 - INFO - Data written to data\extracted_data.json
+[2025-09-07T11:22:33.587096] EXTRACT_SUCCESS: data\extracted_data.json
+--------------------------------------------------
+[2025-09-07T11:22:33.593089200] Finished: Stage-1_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py (exit code 0)
+--------------------------------------------------
+
+
+==================================================
+[2025-09-07T11:22:33.594090] Starting: Stage-2_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
+==================================================
+[2025-09-07T11:22:33.594090] Running command (Attempt 1): python D:/lap/java/dsa/path/to/transform.py
+[2025-09-07T11:22:33.647099600] 2025-09-07 11:22:33,647 - INFO - Starting data transformation
+[2025-09-07T11:22:33.648094600] 2025-09-07 11:22:33,648 - INFO - Transforming 3 records
+[2025-09-07T11:22:33.648094600] 2025-09-07 11:22:33,649 - INFO - Transformed data written to data\transformed_data.json
+[2025-09-07T11:22:33.649467600] TRANSFORM_SUCCESS: data\transformed_data.json
+--------------------------------------------------
+[2025-09-07T11:22:33.654554900] Finished: Stage-2_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py (exit code 0)
+--------------------------------------------------
+
+
+==================================================
+[2025-09-07T11:22:33.655555300] Starting: Stage-3_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py
+==================================================
+[2025-09-07T11:22:33.655555300] Running command (Attempt 1): python D:/lap/java/dsa/path/to/load.py
+[2025-09-07T11:22:33.714562600] 2025-09-07 11:22:33,714 - INFO - Starting data loading
+[2025-09-07T11:22:33.727564100] 2025-09-07 11:22:33,728 - INFO - Loading 3 records
+[2025-09-07T11:22:33.728555900] 2025-09-07 11:22:33,728 - INFO - Data loaded successfully to output\final_data.json
+[2025-09-07T11:22:33.728555900] 2025-09-07 11:22:33,728 - INFO - Summary report generated at output\load_summary.json
+[2025-09-07T11:22:33.728555900] LOAD_SUCCESS: output\final_data.json
+[2025-09-07T11:22:33.728555900] SUMMARY: output\load_summary.json
+--------------------------------------------------
+[2025-09-07T11:22:33.735554400] Finished: Stage-3_TRANSFORM_FILE=D__lap_java_dsa_path_to_transform.py_LOAD_FILE=D__lap_java_dsa_path_to_load.py_EXTRACT_FILE=D__lap_java_dsa_path_to_extract.py (exit code 0)
+--------------------------------------------------
+
+Execution completed successfully.

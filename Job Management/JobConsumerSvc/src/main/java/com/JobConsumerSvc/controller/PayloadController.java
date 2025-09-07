@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/payloads") // base URL: /payloads
+@RequestMapping("/payloads/jobsvc") // base URL: /payloads
 public class PayloadController {
 
     @Autowired

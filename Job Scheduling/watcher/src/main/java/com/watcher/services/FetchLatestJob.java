@@ -1,8 +1,8 @@
-package com.watcher.utils;
+package com.watcher.services;
 
 import com.watcher.entities1.Job;
 import com.watcher.entities1.TaskStatus;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -12,26 +12,38 @@ import java.time.temporal.ChronoUnit;
 @Service
 public class FetchLatestJob {
 
-    private final WebClient webClient;
 
     private Long lastFetchedJobId = 0L;
     private LocalDateTime lastModifiedTime = null;
 
-    @Autowired
-    public FetchLatestJob(WebClient webClient) {
-        this.webClient = webClient;
+    @Value("${webclient.base-url}")
+    private String baseUrl;
+    private final WebClient webClientBuilder;
+
+    public FetchLatestJob(WebClient.Builder webClientBuilder,
+                          @Value("${webclient.base-url}") String baseUrl) {
+        this.webClientBuilder = webClientBuilder.baseUrl(baseUrl).build();
     }
+
 
     public Job fetchLatestJob() {
         Job job = null;
 
         try {
-            Job latestJob = webClient.get()
-                    .uri("/jobs/latest")
+
+//            Job latestJob = webClientBuilder
+//                    .get()
+//                    .uri(baseUrl +"/jobs/jobsvc/latest") // Eureka serviceId
+//                    .retrieve()
+//                    .bodyToMono(Job.class)
+//                    .block();
+            Job latestJob = webClientBuilder.get()
+                    .uri("/jobs/jobsvc/latest")   // relative path only
                     .retrieve()
                     .bodyToMono(Job.class)
-                    .block();  // blocking call
-//            System.out.println(latestJob +" this is the latest job");
+                    .block();
+
+            System.out.println(latestJob +" this is the latest job");
             if (latestJob != null && TaskStatus.READY.equals(latestJob.getStatus())) {
 
                 Long currentJobId = latestJob.getId();

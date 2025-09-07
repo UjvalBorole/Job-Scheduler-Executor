@@ -6,6 +6,7 @@ import com.watcher.entities1.TaskStatus;
 import com.watcher.entities3.RunStatus;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -19,20 +20,27 @@ import java.util.Map;
 @Service
 public class ModifyJob {
 
-    private final WebClient webClient;
+    private final WebClient webClientBuilder;
     private final JobRunCacheService jobRunCacheService;
 
+    @Value("${webclient.base-url}")
+    private String baseUrl;
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper mapper;
 
     @Autowired
-    public ModifyJob(WebClient webClient, JobRunCacheService jobRunCacheService, RedisTemplate<String, Object> redisTemplate, ObjectMapper mapper) {
-        this.webClient = webClient;
+    public ModifyJob(WebClient.Builder webClientBuilder,
+                     JobRunCacheService jobRunCacheService,
+                     RedisTemplate<String, Object> redisTemplate,
+                     ObjectMapper mapper,
+                     @Value("${webclient.base-url}") String baseUrl) {
+        this.webClientBuilder = webClientBuilder.baseUrl(baseUrl).build();
         this.jobRunCacheService = jobRunCacheService;
         this.redisTemplate = redisTemplate;
         this.mapper = mapper;
     }
+
 
 
     /**
@@ -53,15 +61,17 @@ public class ModifyJob {
 
             // 🔄 Patch Job
             if (!jobPatchBody.isEmpty()) {
-                String jobResp = webClient.patch()
-                        .uri("/jobs/{id}", jobId)
+                String jobResp = webClientBuilder.patch()
+                        .uri("/jobs/jobsvc/{id}", jobId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .bodyValue(jobPatchBody)
                         .retrieve()
                         .bodyToMono(String.class)
                         .block();
 
-                System.out.println("✅ Patched Job: " + jobResp);
+                log.info("✅ Patched Job {} response={}", jobId, jobResp);
+
+
             }
 
             JobRunCacheDTO existing = jobRunCacheService.get(jobId);

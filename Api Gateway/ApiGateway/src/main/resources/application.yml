@@ -1,0 +1,57 @@
+spring:
+  cloud:
+    gateway:
+      routes:
+#        - id: executor1
+#          uri: lb://executor1
+#          predicates:
+#            - Path=/users/**
+
+        - id: JobConsumerSvc
+          uri: lb://JOBCONSUMERSVC
+          predicates:
+            - Path=/api/deptracker/**,/jobs/jobsvc/**,/jobruns/**,/payloads/jobsvc/**
+
+        - id: JobService
+          uri: lb://JOBSERVICE
+          predicates:
+            - Path=/cancel/**,/jobs/**,/payloads/**
+
+#        - id: watcher
+#          uri: lb://watcher
+#          predicates:
+#            - Path=/cancel/**,/jobs/**,/payloads/**
+
+
+        - id: test
+          uri: https://httpbin.org
+          predicates:
+            - Path=/test/**
+
+
+#  config:
+#    import: "optional:configserver:http://localhost:8085"
+
+  ##octa details
+#okta:
+#  oauth2:
+#    issuer: https://dev-15726617.okta.com/oauth2/default
+#    audience: api://default
+#    client-id: 0oaosp0mw1gJxz4Fo5d7
+#    client-secret: BOdze5qN3wlILmU0sHaqjpfWFPmoB59L7-a22FE5--geAu0KjRounRDS_X_v-srN
+#    scopes: openid, profile, email, offline_access
+
+#spring:
+#  security:
+#    oauth2:
+#      client:
+#        registration:
+#          okta:
+#            client-id: 0oaosp0mw1gJxz4Fo5d7
+#            client-secret: BOdze5qN3wlILmU0sHaqjpfWFPmoB59L7-a22FE5--geAu0KjRounRDS_X_v-srN
+#            scope: openid,profile,email,offline_access
+#            redirect-uri: "{baseUrl}/login/oauth2/code/okta"
+#            client-name: Okta
+#        provider:
+#          okta:
+#            issuer-uri: https://dev-15726617.okta.com/oauth2/default

@@ -22,7 +22,7 @@ import com.JobConsumerSvc.service.JobService;
 import lombok.RequiredArgsConstructor;
 
 @RestController
-@RequestMapping("/jobs")
+@RequestMapping("/jobs/jobsvc")
 @RequiredArgsConstructor
 public class JobController {
 
