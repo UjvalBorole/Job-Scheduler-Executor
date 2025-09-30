@@ -51,7 +51,7 @@ public class JobService {
 
     LocalDateTime time = LocalDateTime.now();
 
-    private int executorid;
+    private int executorid =1;
 
     /* =========================================================
      * Kafka send helpers
@@ -275,6 +275,7 @@ public class JobService {
     )
     public void consumeRunQueue(RedisJobWrapper event) {
 //        this.executorid=exeId;
+        System.out.println(event);
         log.info("▶️ Consumed from RunQueue job={}", event.getJob() != null ? event.getJob().getId() : null);
         handleJobEvent(event);
     }

@@ -1,6 +1,7 @@
 package com.watcher.services;
 
 import com.watcher.entities1.Job;
+import com.watcher.entities1.ScheduleType;
 import com.watcher.entities1.TaskStatus;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -31,20 +32,14 @@ public class FetchLatestJob {
 
         try {
 
-//            Job latestJob = webClientBuilder
-//                    .get()
-//                    .uri(baseUrl +"/jobs/jobsvc/latest") // Eureka serviceId
-//                    .retrieve()
-//                    .bodyToMono(Job.class)
-//                    .block();
             Job latestJob = webClientBuilder.get()
                     .uri("/jobs/jobsvc/latest")   // relative path only
                     .retrieve()
                     .bodyToMono(Job.class)
                     .block();
 
-            System.out.println(latestJob +" this is the latest job");
-            if (latestJob != null && TaskStatus.READY.equals(latestJob.getStatus())) {
+//            System.out.println(latestJob +" this is the latest job");
+            if (latestJob != null && TaskStatus.READY.equals(latestJob.getStatus()) && ScheduleType.CRON.equals(latestJob.getScheduleType())) {
 
                 Long currentJobId = latestJob.getId();
                 LocalDateTime currentModified = latestJob.getModifiedTime();

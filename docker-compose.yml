@@ -1,0 +1,428 @@
+# version: "3.9"
+services:
+  # =========================
+  # Eureka Discovery Service
+  # =========================
+  discovery-service:
+    container_name: discovery-service
+    build:
+      context: ./Service Discovery/ServiceDiscovery
+      dockerfile: Dockerfile
+    ports:
+      - "8090:8090"
+    environment:
+      - SPRING_APPLICATION_NAME=service-discovery
+      - SERVER_PORT=8090
+      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+      - EUREKA_CLIENT_FETCH_REGISTRY=false
+      - EUREKA_INSTANCE_HOSTNAME=discovery-service
+      - eureka_client_service_url_defaultZone=http://discovery-service:8090/eureka/
+      
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # =========================
+  # Spring Cloud Config Server
+  # =========================
+  config-server:
+    container_name: config-server
+    build:
+      context: ./Config Server/ConfigServer
+      dockerfile: Dockerfile
+    ports:
+      - "8092:8092"
+    depends_on:
+      - discovery-service
+    environment:
+      - SPRING_APPLICATION_NAME=config-server
+      - SERVER_PORT=8092
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_URI=https://github.com/zaccode/microservice
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_CLONE_ON_START=true
+      - SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL=main
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-service:8090/eureka/
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # =========================
+  # MongoDB Database  
+  # =========================
+
+  mongodb:
+    image: mongo:6
+    container_name: mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_INITDB_DATABASE: job_scheduler_db
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --username root --password root --eval 'db.adminCommand(\"ping\").ok' | grep 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backend
+
+
+  # =========================
+  # Postgres Database & pgAdmin     
+  # =========================
+
+  postgres:
+    container_name: postgres_container #this is the host name
+    image: postgres:14
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+      POSTGRES_DB: JobDB
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U root -d JobDB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+   # =========================
+   # pgAdmin  
+    # ========================= 
+
+  pgadmin:
+    container_name: pgadmin_container
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+    volumes:
+      - pgadmin:/var/lib/pgadmin
+    ports:
+      - "5050:80"
+    networks:
+      - backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # zookeeper:
+  #   image: confluentinc/cp-zookeeper:7.5.0
+  #   container_name: zookeeper
+  #   environment:
+  #     ZOOKEEPER_CLIENT_PORT: 2181
+  #     ZOOKEEPER_TICK_TIME: 2000
+  #   ports:
+  #     - "2181:2181"
+  #   networks:
+  #     - backend
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "echo stat | nc localhost 2181"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #   restart: unless-stopped
+
+  
+
+
+  # =========================
+  # Kafka Broker  
+  # =========================
+
+  kafka:
+    image: bitnami/kafka:3.6
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      # KRaft Configuration
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      
+      # Corrected Listeners Configuration
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      
+      # Cluster ID
+      KAFKA_KRAFT_CLUSTER_ID: "AAAAAAAAAAAAAAAAAAAAAQ"
+      
+      # Storage
+      KAFKA_CFG_LOG_DIRS: "/bitnami/kafka/data"
+      
+      # Other Settings
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+    volumes:
+      - kafka_data:/bitnami/kafka
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 0"]
+      interval: 20s
+      timeout: 30s
+      retries: 10
+      start_period: 120s
+    restart: unless-stopped
+
+  # =========================
+  # Redis Cache  
+  # =========================
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+    volumes:
+    - redis-data:/data
+    environment:
+    # - SPRING_REDIS_HOST=redis
+    - SPRING_REDIS_PORT=6379
+    - SPRING_REDIS_TIMEOUT=5000ms
+    - SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE=8
+    - SPRING_REDIS_LETTUCE_POOL_MAX_WAIT=5000ms
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    
+    restart: unless-stopped
+
+  # =========================
+  # Job Consumer Service
+  # =========================
+
+
+  job-consumer-svc:
+    container_name: job-consumer-svc
+    build:
+      context: ./Job Management/JobConsumerSvc
+      dockerfile: Dockerfile
+    volumes:
+      - ~/.m2:/root/.m2
+    ports:
+      - "8082:8082"
+    environment:
+      # === Kafka ===
+      # SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # SPRING_KAFKA_PROPERTIES_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+
+      # === Postgres ===
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/JobDB
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+      # SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+
+      # === MongoDB ===
+      SPRING_DATA_MONGODB_HOST: mongodb
+      # SPRING_DATA_MONGODB_PORT: 27017
+      # SPRING_DATA_MONGODB_DATABASE: job_scheduler_db
+      SPRING_DATA_MONGODB_USERNAME: root
+      SPRING_DATA_MONGODB_PASSWORD: root
+      # SPRING_DATA_MONGODB_AUTHENTICATION_DATABASE: admin
+
+      # === Redis ===
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+
+      # === Service Config ===
+      SERVER_PORT: 8082
+      # SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8092
+      SPRING_PROFILES_ACTIVE: eureka
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+
+
+  # =========================
+  # Job Service 
+  # =========================
+
+  job-service:
+    container_name: job-service
+    build:
+      context: ./Job Management/JobService
+      dockerfile: Dockerfile
+    volumes:
+      - shared-uploads:/data/uploads
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8092
+      SPRING_PROFILES_ACTIVE: eureka
+      SERVER_PORT: 8081
+    # depends_on:
+    #   kafka:
+    #     condition: service_healthy
+    #   job_consumer_svc:
+    #     condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # =========================
+  # Job Scheduler Service 
+  # =========================
+  job-scheduler-svc:
+    container_name: job-scheduler-svc
+    build:
+      context: ./Job Scheduling/watcher
+      dockerfile: Dockerfile
+    ports:
+      - "8083:8083"
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092  
+      # SPRING_DATA_REDIS_HOST: redis
+      # SPRING_DATA_REDIS_PORT: 6379
+      SERVER_PORT: 8083
+      # SPRING_DATA_REDIS_TIMEOUT: 10000ms
+      # SPRING_DATA_REDIS_LETTUCE_POOL_MAX_WAIT: 10000ms
+      # SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8092
+      SPRING_PROFILES_ACTIVE: eureka
+      webclient_base-url: http://JOBCONSUMERSVC
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      job-consumer-svc:
+        condition: service_healthy
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # =========================
+  # Executor Service  
+  # =========================
+
+  executor-service:
+    container_name: executor-service
+    build:
+      context: ./Job Execution/executor1   # adjust path to your executor's Dockerfile
+      dockerfile: Dockerfile
+    volumes:
+      - shared-uploads:/data/uploads
+    ports:
+      - "8084:8084"
+    environment:
+      SPRING_APPLICATION_NAME: executor
+      SERVER_PORT: 8084
+      # SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8092
+      SPRING_PROFILES_ACTIVE: eureka
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      webclient_base-url: http://JOBCONSUMERSVC
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    depends_on:
+      - config-server
+      - discovery-service
+      - kafka
+      - redis
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # =========================
+  # Executor Manual Service   
+  # =========================
+
+  executor-manual-service:
+    container_name: executor-manual-service
+    build:
+      context: ./Job Execution/executor1 - Manual   # adjust path to your Dockerfile
+      dockerfile: Dockerfile
+    volumes:
+      - shared-uploads:/data/uploads
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_APPLICATION_NAME: executorManual
+      SERVER_PORT: 8085
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8092
+      SPRING_PROFILES_ACTIVE: eureka
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      webclient_ase-url: http://JOBCONSUMERSVC
+    depends_on:
+      - config-server
+      - discovery-service
+      - kafka
+      - redis
+    networks:
+      - backend
+    restart: unless-stopped
+
+  # =========================
+  # API Gateway
+  # =========================
+  api-gateway:
+    container_name: api-gateway
+    build:
+      context: ./Api Gateway/ApiGateway
+      dockerfile: Dockerfile
+    ports:
+      - "8091:8091"
+    environment:
+      - SPRING_APPLICATION_NAME=api-gateway
+      - SERVER_PORT=8091
+      # - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8092
+      - SPRING_PROFILES_ACTIVE=eureka
+      # - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-service:8090/eureka/
+    depends_on:
+      config-server:
+        condition: service_started
+      discovery-service:
+        condition: service_started
+    networks:
+      - backend
+    restart: unless-stopped
+
+
+volumes:
+  postgres:
+  pgadmin:
+  kafka_data:
+  redis-data:
+  mongo-data:
+  shared-uploads:
+
+networks:
+  backend:
+    driver: bridge

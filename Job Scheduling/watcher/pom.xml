@@ -112,14 +112,6 @@
 			<version>9.1.6</version>
 		</dependency>
 
-		<!-- Dependency on JobConsumerSvc -->
-		<dependency>
-			<groupId>com.JobConsumerSvc</groupId>
-			<artifactId>JobConsumerSvc</artifactId>
-			<version>0.0.1-SNAPSHOT</version>
-			<scope>compile</scope>
-		</dependency>
-
 		<!-- Config Client (to fetch configs from Spring Cloud Config Server) -->
 		<dependency>
 			<groupId>org.springframework.cloud</groupId>

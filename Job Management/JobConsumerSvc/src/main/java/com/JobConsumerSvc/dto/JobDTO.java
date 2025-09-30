@@ -23,7 +23,7 @@ public class JobDTO {
     private String cronExpression;
     private List<String> dependencies;
     private int retries;
-    private List<Payload> payload;
+    private List<Payload> payloads;
     private String email;
     private String meta;
     private LocalDateTime modifiedTime;

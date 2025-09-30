@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "name": "JOHN DOE",
+    "email": "john@example.com",
+    "value": 45.7,
+    "status": "active",
+    "processed_at": "2025-09-13T19:42:11.857255"
+  },
+  {
+    "id": 2,
+    "name": "JANE SMITH",
+    "email": "jane@example.com",
+    "value": 89.2,
+    "status": "active",
+    "processed_at": "2025-09-13T19:42:11.857267"
+  },
+  {
+    "id": 3,
+    "name": "BOB JOHNSON",
+    "email": "bob@example.com",
+    "value": 12.4,
+    "status": "inactive",
+    "processed_at": "2025-09-13T19:42:11.857269"
+  }
+]

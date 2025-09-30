@@ -1,6 +1,5 @@
 #  http://localhost:8091/actuator/gateway/routes #--check this uri to see the all endpoints
 #  http://localhost:8091/actuator/circuitbreaker #--check this uri to see the detail about the circuit breaker status some thing
-
 spring:
   cloud:
     gateway:
@@ -68,8 +67,8 @@ spring:
               enabled: false
               lower-case-service-id: true
           httpclient: #--Global Timeout Config
-            response-timeout: 5s #-After the connection is established, Gateway will wait at most 5 seconds for the full HTTP response
-            connect-timeout: 2000 #Gateway will wait at most 2 second while trying to establish a TCP connection to the downstream service
+            response-timeout: 7s #-After the connection is established, Gateway will wait at most 5 seconds for the full HTTP response
+            connect-timeout: 5000 #Gateway will wait at most 2 second while trying to establish a TCP connection to the downstream service
 management:
   endpoints:
     web:

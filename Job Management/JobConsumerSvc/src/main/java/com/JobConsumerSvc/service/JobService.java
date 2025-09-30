@@ -1,5 +1,6 @@
 package com.JobConsumerSvc.service;
 
+import com.JobConsumerSvc.config.ManualJobProducer;
 import com.JobConsumerSvc.dto.JobDTO;
 import com.JobConsumerSvc.dto.JobRunCacheDTO;
 import com.JobConsumerSvc.dto.JobRunDTO;
@@ -7,6 +8,7 @@ import com.JobConsumerSvc.entities1.*;
 import com.JobConsumerSvc.entities2.Payload;
 import com.JobConsumerSvc.entities3.RunStatus;
 import com.JobConsumerSvc.entities3.JobRun;
+import com.JobConsumerSvc.mapper.JobMapper;
 import com.JobConsumerSvc.repositories.JobRepository;
 import com.JobConsumerSvc.repositories.JobRunRepository;
 import com.JobConsumerSvc.repositories.PayloadRepository;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static com.JobConsumerSvc.mapper.JobMapper.fromDTO;
+import static com.JobConsumerSvc.mapper.JobMapper.toDTO;
 
 @Service
 @RequiredArgsConstructor
@@ -31,6 +34,7 @@ public class JobService {
     private static final Logger LOGGER = LoggerFactory.getLogger(JobService.class);
     private final JobRepository jobRepository;
     private final JobRunRepository jobRunRepository;
+    private final ManualJobProducer manualJobProducer;
     private final PayloadRepository payloadRepository;
     // ✅ Use Redis Cache Service instead of JobRunRepository
     private final JobRunCacheService jobRunCacheService;
@@ -47,8 +51,8 @@ public class JobService {
 
         switch (event.getEventType()) {
             case CREATE -> handleCreate(event.getJob());
-            case MOD     -> handleModify(event);
-            case DELETE  -> handleDelete(event.getJobId());
+            case MOD -> handleModify(event);
+            case DELETE -> handleDelete(event.getJobId());
         }
     }
 
@@ -108,6 +112,12 @@ public class JobService {
 
             LOGGER.info("✅ Job {} created successfully", createdJob.getId());
 
+//            if(ScheduleType.MANUAL.equals(job.getScheduleType())){
+//                JobDTO jobDTO = toDTO(createdJob);
+//                LOGGER.info("✅ Job {} Sent to Execution successfully", jobDTO.getId());
+//                manualJobProducer.sendEvent(jobDTO);
+//            }
+
         } catch (Exception e) {
             LOGGER.error("❌ Error while creating job: {}", job, e);
         }
@@ -120,6 +130,19 @@ public class JobService {
                 .orElseThrow(() -> new EntityNotFoundException("Job not found with id: " + jobId));
 
         JobDTO dto = event.getJob();
+        String error = null;
+
+        if (ScheduleType.MANUAL.equals(dto.getScheduleType()) &&
+                dto.getStatus().equals(TaskStatus.READY) &&
+                job.getPayloads().isEmpty()) {
+            LOGGER.error("🚫 Payload should not be Empty: {}", job.getId());
+            LOGGER.warn("⚠️ Job ID {} not Processed Further", jobId);
+            error = "Job ID " + jobId + " not Processed Further";
+
+            dto.setStatus(TaskStatus.CANCELLED);
+
+        }
+
 
         if (dto.getName() != null && !dto.getName().isBlank()) {
             LOGGER.info("Updating name from '{}' to '{}'", job.getName(), dto.getName());
@@ -168,18 +191,30 @@ public class JobService {
 
         // ✅ set modified time on update
         job.setModifiedTime(LocalDateTime.now());
-        jobRepository.save(job);
+        Job createdJob = jobRepository.save(job);
 
-        // ✅ Update JobRun in Redis (PATCH style)
-        JobRunCacheDTO jobRunDTO = JobRunCacheDTO.builder()
-                .modifiedTime(LocalDateTime.now())
-                .status(RunStatus.PENDING)
-                .executorId("no execution")
-                .attemptNumber(0)
-                .errorMsg("no error")
-                .build();
 
-        jobRunCacheService.patchUpdate(job.getId(), jobRunDTO);
+        if (TaskStatus.READY.equals(createdJob.getStatus())) {
+            // ✅ Update JobRun in Redis (PATCH style)
+            JobRunCacheDTO jobRunDTO = JobRunCacheDTO.builder()
+                    .modifiedTime(LocalDateTime.now())
+                    .status(ScheduleType.MANUAL.equals(createdJob.getScheduleType()) ? RunStatus.QUEUED : RunStatus.PENDING)
+                    .executorId("no execution")
+                    .attemptNumber(0)
+                    .errorMsg(error != null ? error : "N/A")
+                    .build();
+
+            jobRunCacheService.patchUpdate(job.getId(), jobRunDTO);
+        }
+
+
+        if (ScheduleType.MANUAL.equals(createdJob.getScheduleType()) &&
+                TaskStatus.READY.equals(createdJob.getStatus()) &&
+                !createdJob.getPayloads().isEmpty()) {
+                JobDTO jobDTO = toDTO(createdJob);
+                LOGGER.info("✅ Job {} Sent to Execution successfully", jobDTO.getId());
+                manualJobProducer.sendEvent(jobDTO);
+            }
     }
 
     private void handleDelete(String jobIdStr) {

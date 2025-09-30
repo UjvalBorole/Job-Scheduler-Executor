@@ -11,7 +11,7 @@
 	<groupId>com.executor1</groupId>
 	<artifactId>executor1</artifactId>
 	<version>0.0.2-SNAPSHOT</version>
-	<name>executor1</name>
+	<name>executor1-Scheduler</name>
 	<description>This is the Job Executor of id 1</description>
 	<packaging>jar</packaging> <!-- that use for creating jar  -->
 	<properties>
@@ -143,17 +143,7 @@
 					</excludes>
 				</configuration>
 			</plugin>
-			<plugin>
-				<groupId>org.springframework.boot</groupId>
-				<artifactId>spring-boot-maven-plugin</artifactId>
-				<version>3.5.4</version>
-				<executions>
-					<execution>
-						<id>repackage</id>
-						<phase>none</phase> <!-- disables executable repackaging -->
-					</execution>
-				</executions>
-			</plugin>
+	
 		</plugins>
 	</build>
 </project>

@@ -1,0 +1,214 @@
+Absolutely! I can create a **well-organized, book-style Docker & Docker Compose cheat sheet** for you. I’ll align sections, use clear headings, tables where appropriate, and keep it professional and reference-ready. Here’s the polished version:
+
+---
+
+# **📘 Docker & Docker Compose Cheat Sheet**
+
+---
+
+## **1. Spring Boot Docker Images**
+
+> Build Spring Boot apps as Docker images using Buildpacks:
+
+```bash
+./mvnw spring-boot:build-image -Dspring-boot.build-image.imageName=<username>/<image-name>
+```
+
+> Or using Dockerfile:
+
+```bash
+docker build -t <username>/<image-name> .
+docker run -p 8080:8080 <username>/<image-name>
+```
+
+---
+
+## **2. Docker Image Commands**
+
+| Command                            | Description                    |
+| ---------------------------------- | ------------------------------ |
+| `docker pull <image>`              | Download image from Docker Hub |
+| `docker build -t <name> .`         | Build image from Dockerfile    |
+| `docker push <image>`              | Push image to Docker Hub       |
+| `docker rmi <image-id/image-name>` | Remove an image                |
+| `docker images`                    | List all images                |
+
+---
+
+## **3. Docker Container Commands**
+
+| Command                                                         | Description                           |
+| --------------------------------------------------------------- | ------------------------------------- |
+| `docker run -it -d -p <host>:<container> --name <name> <image>` | Run container in detached mode        |
+| `docker start <container>`                                      | Start stopped container               |
+| `docker stop <container>`                                       | Stop running container                |
+| `docker restart <container>`                                    | Restart container                     |
+| `docker rm <container>`                                         | Remove container                      |
+| `docker ps`                                                     | List running containers               |
+| `docker ps -a`                                                  | List all containers including stopped |
+
+---
+
+## **4. Interacting With Containers**
+
+| Command                            | Description                    |
+| ---------------------------------- | ------------------------------ |
+| `docker exec -it <container> bash` | Open bash inside container     |
+| `docker logs <container>`          | Show container logs            |
+| `docker inspect <container>`       | Detailed container information |
+| `docker top <container>`           | Show processes running inside  |
+| `docker attach <container>`        | Attach terminal to container   |
+
+---
+
+## **5. Cleanup Commands**
+
+| Command                | Description                               |
+| ---------------------- | ----------------------------------------- |
+| `docker system prune`  | Remove unused containers, images, volumes |
+| `docker volume prune`  | Remove unused volumes                     |
+| `docker network prune` | Remove unused networks                    |
+| `docker image prune`   | Remove dangling/unused images             |
+
+---
+
+## **6. Networking**
+
+| Command                                        | Description                  |
+| ---------------------------------------------- | ---------------------------- |
+| `docker network ls`                            | List all networks            |
+| `docker network create <name>`                 | Create a new network         |
+| `docker network inspect <name>`                | Inspect network details      |
+| `docker network connect <network> <container>` | Connect container to network |
+
+---
+
+## **7. Volumes**
+
+| Command                                 | Description                   |
+| --------------------------------------- | ----------------------------- |
+| `docker volume ls`                      | List all volumes              |
+| `docker volume create <name>`           | Create a volume               |
+| `docker run -v <volume>:<path> <image>` | Mount volume inside container |
+| `docker volume inspect <volume>`        | Inspect volume details        |
+| `docker volume rm <volume>`             | Remove volume                 |
+
+---
+
+## **8. Docker Compose Commands**
+
+| Command                                   | Description                                         |
+| ----------------------------------------- | --------------------------------------------------- |
+| `docker-compose up`                       | Start all services                                  |
+| `docker-compose up -d`                    | Start services in detached mode                     |
+| `docker-compose down`                     | Stop & remove containers, networks, default volumes |
+| `docker-compose down -v`                  | Stop & remove containers + named volumes            |
+| `docker-compose build`                    | Build all services                                  |
+| `docker-compose build <service>`          | Build a specific service                            |
+| `docker-compose build --no-cache`         | Build without using cache                           |
+| `docker-compose restart`                  | Restart all services                                |
+| `docker-compose restart <service>`        | Restart a specific service                          |
+| `docker-compose stop`                     | Stop all services                                   |
+| `docker-compose stop <service>`           | Stop a specific service                             |
+| `docker-compose logs`                     | Show logs of all services                           |
+| `docker-compose logs -f`                  | Follow logs continuously                            |
+| `docker-compose logs -f <service>`        | Follow logs of a specific service                   |
+| `docker-compose exec <service> <command>` | Run command inside a container                      |
+| `docker-compose ps`                       | Show running container status                       |
+| `docker-compose rm`                       | Remove stopped containers                           |
+| `docker-compose up --build -d`            | Rebuild & start services in detached mode           |
+
+---
+
+## **9. Recommended Workflow (Microservices Stack)**
+
+```bash
+# Build all images
+docker-compose build
+
+# Start all services in background
+docker-compose up -d
+
+# Check logs for a specific service
+docker-compose logs -f api-gateway
+
+# Stop all services
+docker-compose down
+
+# Remove all volumes (for clean reset)
+docker-compose down -v
+```
+
+> One-liner for **full reset, rebuild, and startup**:
+
+```bash
+docker-compose down -v --remove-orphans && docker-compose build --no-cache && docker-compose up -d
+```
+
+---
+
+## **10. Example: Spring Boot + Postgres + Kafka Stack**
+
+**Dockerfile (Spring Boot App)**
+
+```dockerfile
+FROM eclipse-temurin:21-jdk
+WORKDIR /app
+COPY target/*.jar app.jar
+COPY wait-for.sh /wait-for.sh
+RUN chmod +x /wait-for.sh
+ENTRYPOINT ["/wait-for.sh", "kafka", "9092", "java", "-jar", "app.jar"]
+```
+
+**docker-compose.yml**
+
+```yaml
+version: '3.9'
+services:
+  postgres:
+    image: postgres:14
+    environment:
+      POSTGRES_DB: JobDB
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: root
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+
+  kafka:
+    image: bitnami/kafka:3.6
+    ports:
+      - "9092:9092"
+
+  job-service:
+    build: ./JobService
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgres
+      - kafka
+    environment:
+      SERVER_PORT: 8081
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/JobDB
+
+volumes:
+  postgres:
+```
+
+---
+
+This is **book-style, reference-ready**, and covers:
+
+* Docker images
+* Containers
+* Volumes & Networks
+* Compose commands
+* Healthchecks and workflow examples
+
+---
+
+If you want, I can **also create a separate page for your full microservices stack**, explaining **all 15+ services from your docker-compose.yml with dependency graphs, ports, and environment variables** — essentially a microservices reference blueprint.
+
+Do you want me to make that?

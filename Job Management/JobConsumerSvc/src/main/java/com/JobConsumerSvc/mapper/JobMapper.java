@@ -14,7 +14,7 @@ public class JobMapper {
                 .status(job.getStatus())
                 .scheduleTime(job.getScheduleTime())
                 .cronExpression(job.getCronExpression())
-                .payload(job.getPayloads())
+                .payloads(job.getPayloads())
                 .retries(job.getRetries())
                 .dependencies(job.getDependencies())
                 .email(job.getEmail())
@@ -44,7 +44,7 @@ public class JobMapper {
                 .status(dto.getStatus())
                 .scheduleTime(dto.getScheduleTime())
                 .cronExpression(dto.getCronExpression())
-                .payloads(dto.getPayload()) // Assuming `Job` uses `payloads`, and `JobDTO` uses `payload`
+                .payloads(dto.getPayloads()) // Assuming `Job` uses `payloads`, and `JobDTO` uses `payload`
                 .retries(dto.getRetries())
                 .dependencies(dto.getDependencies())
                 .email(dto.getEmail())

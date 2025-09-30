@@ -3,12 +3,6 @@ package com.JobConsumerSvc.config;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.JobConsumerSvc.dto.DepTrackerDTO;
-import com.JobConsumerSvc.dto.PayloadRequest;
-import com.JobConsumerSvc.entities1.JobEvent;
-import com.JobConsumerSvc.entities2.PayloadEvent;
-
-
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,14 +13,22 @@ import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
 import org.springframework.kafka.support.serializer.JsonDeserializer;
 
+import com.JobConsumerSvc.dto.DepTrackerDTO;
+import com.JobConsumerSvc.dto.PayloadRequest;
+import com.JobConsumerSvc.entities1.JobEvent;
+import com.JobConsumerSvc.entities2.PayloadEvent;
+
 @Configuration
 public class KafkaConsumerConfig {
 
-    @Value("${spring.kafka.topic.deptrackerqueue}")
-    private String DepTrackerDTOTopic;
+    // @Value("${spring.kafka.topic.deptrackerqueue}")
+    // private String DepTrackerDTOTopic;
 
-    @Value("${spring.kafka.topic.payloadqueue}")
-    private String payloadDTOTopic;
+    // @Value("${spring.kafka.topic.payloadqueue}")
+    // private String payloadDTOTopic;
+
+    @Value("${spring.kafka.bootstrap-servers}")
+    private String bootstrapServers;
 
     // ---- JobEvent Config ----
     @Bean
@@ -37,7 +39,7 @@ public class KafkaConsumerConfig {
         deserializer.setUseTypeMapperForKey(true);
 
         Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "executor-group");
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
@@ -60,7 +62,7 @@ public class KafkaConsumerConfig {
         deserializer.setUseTypeMapperForKey(true);
 
         Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "payload-group");
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
@@ -83,7 +85,7 @@ public class KafkaConsumerConfig {
         deserializer.setUseTypeMapperForKey(true);
 
         Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "DepTrackerDTO-group");
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
@@ -106,7 +108,7 @@ public class KafkaConsumerConfig {
         deserializer.setUseTypeMapperForKey(true);
 
         Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.GROUP_ID_CONFIG, "payload-dto-group"); // ✅ unique group
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
