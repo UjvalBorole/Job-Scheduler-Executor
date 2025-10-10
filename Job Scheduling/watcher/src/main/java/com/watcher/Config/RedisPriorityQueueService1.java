@@ -18,7 +18,7 @@ import java.util.*;
 
 @Slf4j
 @Service
-public class RedisPriorityQueueService {
+public class RedisPriorityQueueService1 {
 
     @Autowired
     private RedisTemplate<String, String> redisTemplate;

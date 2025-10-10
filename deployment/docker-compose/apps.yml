@@ -1,4 +1,4 @@
-# version: "3.9"
+name: 'spring-boot-microservices'
 services:
   # =========================
   # Eureka Discovery Service
@@ -6,7 +6,7 @@ services:
   discovery-service:
     container_name: discovery-service
     build:
-      context: ./Service Discovery/ServiceDiscovery
+      context: ../../Service Discovery/ServiceDiscovery
       dockerfile: Dockerfile
     ports:
       - "8090:8090"
@@ -17,10 +17,18 @@ services:
       - EUREKA_CLIENT_FETCH_REGISTRY=false
       - EUREKA_INSTANCE_HOSTNAME=discovery-service
       - eureka_client_service_url_defaultZone=http://discovery-service:8090/eureka/
-      
+      - MANAGEMENT_TRACING_ENABLED=true
+      # - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://tempo:9411/api/v2/spans
+      # - management_otlp_tracing_endpoint=http://tempo:4318
     networks:
       - backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 500m
+    labels:
+      logging: "promtail"
 
   # =========================
   # Spring Cloud Config Server
@@ -28,7 +36,7 @@ services:
   config-server:
     container_name: config-server
     build:
-      context: ./Config Server/ConfigServer
+      context: ../../Config Server/ConfigServer
       dockerfile: Dockerfile
     ports:
       - "8092:8092"
@@ -41,151 +49,18 @@ services:
       - SPRING_CLOUD_CONFIG_SERVER_GIT_CLONE_ON_START=true
       - SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL=main
       - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-service:8090/eureka/
+      - MANAGEMENT_TRACING_ENABLED=true
+      # - MANAGEMENT_ZIPKIN_TRACING_ENDPOINT=http://tempo:9411/api/v2/spans
+      # - management_otlp_tracing_endpoint=http://tempo:4318/v1/traces
     networks:
       - backend
     restart: unless-stopped
-
-  # =========================
-  # MongoDB Database  
-  # =========================
-
-  mongodb:
-    image: mongo:6
-    container_name: mongodb
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: root
-      MONGO_INITDB_ROOT_PASSWORD: root
-      MONGO_INITDB_DATABASE: job_scheduler_db
-    volumes:
-      - mongo-data:/data/db
-    healthcheck:
-      test: ["CMD-SHELL", "mongosh --quiet --username root --password root --eval 'db.adminCommand(\"ping\").ok' | grep 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks:
-      - backend
-
-
-  # =========================
-  # Postgres Database & pgAdmin     
-  # =========================
-
-  postgres:
-    container_name: postgres_container #this is the host name
-    image: postgres:14
-    environment:
-      POSTGRES_USER: root
-      POSTGRES_PASSWORD: root
-      POSTGRES_DB: JobDB
-    volumes:
-      - postgres:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root -d JobDB"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-   # =========================
-   # pgAdmin  
-    # ========================= 
-
-  pgadmin:
-    container_name: pgadmin_container
-    image: dpage/pgadmin4
-    environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
-    volumes:
-      - pgadmin:/var/lib/pgadmin
-    ports:
-      - "5050:80"
-    networks:
-      - backend
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: unless-stopped
-
-
-  # =========================
-  # Kafka Broker (KRaft mode) 
-  # =========================
-
-  kafka:
-    image: bitnami/kafka:3.6
-    container_name: kafka
-    ports:
-      - "9092:9092"
-      - "29092:29092"
-    environment:
-      # KRaft Configuration
-      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
-      KAFKA_CFG_NODE_ID: "1"
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
-      
-      # Corrected Listeners Configuration
-      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092"
-      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092"
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
-      
-      # Cluster ID
-      KAFKA_KRAFT_CLUSTER_ID: "AAAAAAAAAAAAAAAAAAAAAQ"
-      
-      # Storage
-      KAFKA_CFG_LOG_DIRS: "/bitnami/kafka/data"
-      
-      # Other Settings
-      ALLOW_PLAINTEXT_LISTENER: "yes"
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-
-    volumes:
-      - kafka_data:/bitnami/kafka
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 0"]
-      interval: 20s
-      timeout: 30s
-      retries: 10
-      start_period: 120s
-    restart: unless-stopped
-
-  # =========================
-  # Redis Cache  
-  # =========================
-
-  redis:
-    image: redis:7
-    container_name: redis
-    ports:
-      - "6379:6379"
-    volumes:
-    - redis-data:/data
-    environment:
-    # - SPRING_REDIS_HOST=redis
-    - SPRING_REDIS_PORT=6379
-    - SPRING_REDIS_TIMEOUT=5000ms
-    - SPRING_REDIS_LETTUCE_POOL_MAX_ACTIVE=8
-    - SPRING_REDIS_LETTUCE_POOL_MAX_WAIT=5000ms
-    networks:
-      - backend
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-    
-    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 500m
+    labels:
+      logging: "promtail"
 
   # =========================
   # Job Consumer Service
@@ -195,7 +70,7 @@ services:
   job-consumer-svc:
     container_name: job-consumer-svc
     build:
-      context: ./Job Management/JobConsumerSvc
+      context: ../../Job Management/JobConsumerSvc
       dockerfile: Dockerfile
     volumes:
       - ~/.m2:/root/.m2
@@ -229,21 +104,30 @@ services:
       SERVER_PORT: 8082
       # SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8092
       SPRING_PROFILES_ACTIVE: eureka
+      MANAGEMENT_TRACING_ENABLED: "true"
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://tempo:9411/api/v2/spans
+      # management_otlp_tracing_endpoint: http://tempo:4318/v1/traces
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8082/actuator/health"]
       interval: 10s
       timeout: 5s
       retries: 5
-    depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      mongodb:
-        condition: service_healthy
+    # depends_on:
+      # kafka:
+      #   condition: service_healthy
+      # postgres:
+      #   condition: service_healthy
+      # mongodb:
+      #   condition: service_healthy
     networks:
       - backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+    labels:
+      logging: "promtail"
 
 
   # =========================
@@ -253,7 +137,7 @@ services:
   job-service:
     container_name: job-service
     build:
-      context: ./Job Management/JobService
+      context: ../../Job Management/JobService
       dockerfile: Dockerfile
     volumes:
       - shared-uploads:/data/uploads
@@ -261,17 +145,28 @@ services:
       - "8081:8081"
     environment:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       # SPRING_CONFIG_IMPORT: optional:configserver:http://config-server:8092
       SPRING_PROFILES_ACTIVE: eureka
       SERVER_PORT: 8081
+      MANAGEMENT_TRACING_ENABLED: "true"
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://tempo:9411/api/v2/spans
+      # management_otlp_tracing_endpoint: http://tempo:4318/v1/traces
     depends_on:
-      kafka:
-        condition: service_healthy
-    #   job_consumer_svc:
-    #     condition: service_started
+      # kafka:
+      #   condition: service_healthy
+      job-consumer-svc:
+        condition: service_started
     networks:
       - backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+    labels:
+      logging: "promtail"
 
   # =========================
   # Job Scheduler Service 
@@ -279,7 +174,7 @@ services:
   job-scheduler-svc:
     container_name: job-scheduler-svc
     build:
-      context: ./Job Scheduling/watcher
+      context: ../../Job Scheduling/watcher
       dockerfile: Dockerfile
     ports:
       - "8083:8083"
@@ -295,18 +190,27 @@ services:
       webclient_base-url: http://JOBCONSUMERSVC
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      MANAGEMENT_TRACING_ENABLED: "true"
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://tempo:9411/api/v2/spans
+      # management_otlp_tracing_endpoint: http://tempo:4318/v1/traces
     depends_on:
-      kafka:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      # kafka:
+      #   condition: service_healthy
+      # postgres:
+      #   condition: service_healthy
+      # redis:
+      #   condition: service_healthy
       job-consumer-svc:
         condition: service_healthy
     networks:
       - backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+    labels:
+      logging: "promtail"
 
   # =========================
   # Executor Service  
@@ -315,7 +219,7 @@ services:
   executor-service:
     container_name: executor-service
     build:
-      context: ./Job Execution/executor1   # adjust path to your executor's Dockerfile
+      context: ../../Job Execution/executor1   # adjust path to your executor's Dockerfile
       dockerfile: Dockerfile
     volumes:
       - shared-uploads:/data/uploads
@@ -330,14 +234,23 @@ services:
       webclient_base-url: http://JOBCONSUMERSVC
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      MANAGEMENT_TRACING_ENABLED: "true"
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://tempo:9411/api/v2/spans
+      # management_otlp_tracing_endpoint: http://tempo:4318/v1/traces
     depends_on:
       - config-server
       - discovery-service
-      - kafka
-      - redis
+      # - kafka
+      # - redis
     networks:
       - backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+    labels:
+      logging: "promtail"
 
   # =========================
   # Executor Manual Service   
@@ -346,7 +259,7 @@ services:
   executor-manual-service:
     container_name: executor-manual-service
     build:
-      context: ./Job Execution/executor1 - Manual   # adjust path to your Dockerfile
+      context: ../../Job Execution/executor1 - Manual   # adjust path to your Dockerfile
       dockerfile: Dockerfile
     volumes:
       - shared-uploads:/data/uploads
@@ -361,14 +274,23 @@ services:
       SPRING_PROFILES_ACTIVE: eureka
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       webclient_ase-url: http://JOBCONSUMERSVC
+      MANAGEMENT_TRACING_ENABLED: "true"
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://tempo:9411/api/v2/spans
+      # management_otlp_tracing_endpoint: http://tempo:4318/v1/traces
     depends_on:
       - config-server
       - discovery-service
-      - kafka
-      - redis
+      # - kafka
+      # - redis
     networks:
       - backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+    labels:
+      logging: "promtail"
 
   # =========================
   # API Gateway
@@ -376,15 +298,20 @@ services:
   api-gateway:
     container_name: api-gateway
     build:
-      context: ./Api Gateway/ApiGateway
+      context: ../../Api Gateway/ApiGateway
       dockerfile: Dockerfile
     ports:
       - "8091:8091"
     environment:
-      - SPRING_APPLICATION_NAME=api-gateway
-      - SERVER_PORT=8091
+      SPRING_APPLICATION_NAME: api-gateway
+      SERVER_PORT: 8091
       # - SPRING_CONFIG_IMPORT=optional:configserver:http://config-server:8092
-      - SPRING_PROFILES_ACTIVE=eureka
+      SPRING_PROFILES_ACTIVE: eureka
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MANAGEMENT_TRACING_ENABLED: "true"
+      MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: http://tempo:9411/api/v2/spans
+      # management_otlp_tracing_endpoint: http://tempo:4318/v1/traces
       # - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://discovery-service:8090/eureka/
     depends_on:
       config-server:
@@ -394,6 +321,12 @@ services:
     networks:
       - backend
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 700m
+    labels:
+      logging: "promtail"
 
 
 volumes:
@@ -406,4 +339,4 @@ volumes:
 
 networks:
   backend:
-    driver: bridge
+    external: true

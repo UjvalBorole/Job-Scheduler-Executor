@@ -1,9 +1,6 @@
 package com.watcher.utils;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.watcher.entities1.Job;
 import com.watcher.entities1.TaskStatus;
-import com.watcher.entities3.JobRun;
 import com.watcher.entities3.RunStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -14,11 +11,11 @@ import java.util.HashMap;
 import java.util.Map;
 
 @Service
-public class ModifyJob {
+public class ModifyJob1 {
     private final WebClient webClient;
 
     @Autowired
-    public ModifyJob(WebClient webClient) {
+    public ModifyJob1(WebClient webClient) {
         this.webClient = webClient;
     }
 

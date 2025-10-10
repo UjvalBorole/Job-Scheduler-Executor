@@ -10,7 +10,7 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 
 @Service
-public class FetchLatestJob {
+public class FetchLatestJob1 {
 
     private final WebClient webClient;
 
@@ -18,7 +18,7 @@ public class FetchLatestJob {
     private LocalDateTime lastModifiedTime = null;
 
     @Autowired
-    public FetchLatestJob(WebClient webClient) {
+    public FetchLatestJob1(WebClient webClient) {
         this.webClient = webClient;
     }
 

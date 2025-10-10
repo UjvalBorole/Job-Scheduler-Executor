@@ -4,14 +4,14 @@ FROM maven:3.9.6-eclipse-temurin-21 AS builder
 WORKDIR /build
 
 # Copy pom.xml and download dependencies
-COPY pom.xml .
+COPY pom.xml ./pom.xml
 RUN mvn dependency:go-offline -B
 
 # Copy source code and build
-# COPY src ./src
+ COPY src ./src
 
 # Copy everything including src and force rebuild
-COPY . .
+#COPY . .
 
 RUN mvn clean package -DskipTests
 
@@ -42,4 +42,5 @@ ENTRYPOINT ["/bin/sh", "-c", "\
     /wait-for.sh discovery-service 8090 && \
     /wait-for.sh config-server 8092 && \
     /wait-for.sh kafka 9092 && \
+    /wait-for.sh redis 6379 && \
     exec java -jar app.jar"]

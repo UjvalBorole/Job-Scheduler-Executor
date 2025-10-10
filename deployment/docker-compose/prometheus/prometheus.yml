@@ -1,0 +1,60 @@
+# global config
+global:
+  scrape_interval:     15s # Set the scrape interval to every 15 seconds. Default is every 1 minute.
+
+scrape_configs:
+# The job name is added as a label `job=<job_name>` to any timeseries scraped from this config.
+- job_name: 'prometheus'
+  # metrics_path defaults to '/metrics'
+  # scheme defaults to 'http'.
+  static_configs:
+  - targets: ['localhost:9090']
+
+- job_name: 'discovery-service'
+  metrics_path: '/actuator/prometheus'
+  scrape_interval: 5s
+  static_configs:
+  - targets: ['discovery-service:8090']
+
+- job_name: 'config-server'
+  metrics_path: '/actuator/prometheus'
+  scrape_interval: 5s
+  static_configs:
+    - targets: ['config-server:8092']
+
+- job_name: 'job-consumer-svc'
+  metrics_path: '/actuator/prometheus'
+  scrape_interval: 5s
+  static_configs:
+    - targets: ['job-consumer-svc:8082']
+
+- job_name: 'api-gateway'
+  metrics_path: '/actuator/prometheus'
+  scrape_interval: 5s
+  static_configs:
+    - targets: ['api-gateway:8091']
+
+- job_name: 'job-service'
+  metrics_path: '/actuator/prometheus'
+  scrape_interval: 5s
+  static_configs:
+    - targets: ['job-service:8081']
+
+- job_name: 'job-scheduler-svc'
+  metrics_path: '/actuator/prometheus'
+  scrape_interval: 5s
+  static_configs:
+    - targets: ['job-scheduler-svc:8083']
+
+- job_name: 'executor-service'
+  metrics_path: '/actuator/prometheus'
+  scrape_interval: 5s
+  static_configs:
+    - targets: ['executor-service:8084']
+
+- job_name: 'executor-manual-service'
+  metrics_path: '/actuator/prometheus'
+  scrape_interval: 5s
+  static_configs:
+    - targets: ['executor-manual-service:8085']
+
