@@ -1,26 +1,6 @@
 # version: "3.8"
 
 services:  
-  # jenkins_compose:
-  #   image: jenkins/jenkins:lts
-  #   container_name: jenkins_compose
-  #   privileged: true
-  #   user: root
-  #   ports:
-  #     - "8079:8080"
-  #     - "50001:50000"
-  #   volumes:
-  #     - jenkins_compose_home:/var/jenkins_home
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #     - ./jenkins:/var/jenkins_home/pipeline
-  #   environment:
-  #     - JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
-  #     - DOCKER_HOST=unix:///var/run/docker.sock
-    
-  #   networks:
-  #     - backend
-  #   restart: unless-stopped
-
   jenkins_compose:
     build:
       context: .
@@ -239,6 +219,32 @@ services:
     networks:
       - backend
     restart: unless-stopped
+ 
+  # job_executor_svc1:
+  #   container_name: job_executor_svc1
+  #   build:
+  #     context: ./Job Execution/executor1
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "8083:8083"
+  #   environment:
+  #     SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092  
+  #     SPRING_DATA_REDIS_HOST: redis
+  #     SPRING_DATA_REDIS_PORT: 6379
+  #     SPRING_DATA_REDIS_TIMEOUT: 10000ms
+  #     SPRING_DATA_REDIS_LETTUCE_POOL_MAX_WAIT: 10000ms
+  #   depends_on:
+  #     kafka:
+  #       condition: service_healthy
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #     job-consumer-svc:
+  #       condition: service_healthy
+  #   networks:
+  #     - backend
+  #   restart: unless-stopped
 
 volumes:
   postgres:
