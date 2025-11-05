@@ -1,5 +1,6 @@
 # docker network create backend
 # docker-compose -f infra.yml pull && docker-compose -f infra.yml up -d
+#that Create First and also create network if not exists
 name: 'Infrastructure Services'
 services:
   # =========================
@@ -290,4 +291,7 @@ networks:
   backend:
     external: true
 
-
+# networks:
+#   backend:
+#     name: backend       # 👈 dont used this fixed 
+#     driver: bridge

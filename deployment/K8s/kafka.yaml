@@ -1,0 +1,212 @@
+# # Kafka PV (node-specific storage)
+# #/mnt/data/kafka  create this path first
+# apiVersion: v1                          # Kubernetes API version for PersistentVolume resources.
+# kind: PersistentVolume                  # Resource type — defines a static piece of storage in the cluster.
+# metadata:                               # Metadata section for naming and labeling this volume.
+#   name: kafka-pv                        # Unique name for this PersistentVolume.
+#   labels:                               # Labels help identify and match this PV to a PVC.
+#     type: local                         # Custom label indicating this is local node storage.
+# spec:                                   # Specification for the PV details.
+#   capacity:                             # Defines how much storage this volume provides.
+#     storage: 5Gi                        # Total capacity available — here 5 gigabytes.
+#   accessModes:                          # Defines how the volume can be accessed by pods.
+#     - ReadWriteOnce                     # Can be mounted read/write by a single node at a time.
+#   persistentVolumeReclaimPolicy: Retain # Keeps the data after PVC deletion — prevents data loss.
+#   storageClassName: local-storage       # The storage class this PV belongs to (for binding with PVCs).
+#   local:                                # Declares this is a local volume (storage on a specific node path).
+#     path: /mnt/data/kafka               # Actual directory path on the node — must exist beforehand.
+#   nodeAffinity:                         # Ensures this PV is only available on a specific node.
+#     required:                           # The node must satisfy the following conditions.
+#       nodeSelectorTerms:                # List of node selector terms.
+#       - matchExpressions:               # Define label matching rules.
+#         - key: kubernetes.io/hostname   # The label key to match against (node hostname).
+#           operator: In                  # Operator: value must be in the list below.
+#           values:
+#           - docker-desktop              # Node name where the PV resides (replace with actual node name).
+
+# ---
+
+# # Kafka StatefulSet (KRaft mode)
+# apiVersion: apps/v1                     # API version for StatefulSet resources.
+# kind: StatefulSet                       # Resource kind — ensures stable network IDs and persistent volumes.
+# metadata:                               # Metadata for naming and scoping.
+#   name: kafka                           # Name of the StatefulSet.
+#   namespace: job-scheduler              # Namespace where Kafka will run.
+# spec:                                   # Specification describing desired behavior.
+#   serviceName: kafka                    # Must match the headless service name for stable DNS.
+#   replicas: 1                           # Number of Kafka brokers (1 here — use 3+ for production).
+#   selector:                             # Selector to identify the Pods this StatefulSet manages.
+#     matchLabels:
+#       app: kafka                        # Must match template metadata labels.
+#   template:                             # Pod template describing Kafka container setup.
+#     metadata:
+#       labels:
+#         app: kafka                      # Label assigned to pods — used by the Service selector.
+#     spec:                               # Pod spec (container, volume mounts, etc.)
+#       securityContext:
+#         fsGroup: 1001                   # Ensures Kafka process (UID 1001) can write to volume files.
+#       containers:                       # List of containers for this pod.
+#       - name: kafka                     # Container name inside the Pod.
+#         image: bitnami/kafka:3.7.0      # Using Bitnami Kafka image version 3.7.0.
+#         env:                            # Environment variables to configure Kafka behavior.
+#         - name: KAFKA_ENABLE_KRAFT
+#           value: "yes"                  # Enables KRaft mode (no Zookeeper dependency).
+#         - name: KAFKA_CFG_PROCESS_ROLES
+#           value: "controller,broker"    # Kafka process will act as both controller and broker.
+#         - name: KAFKA_CFG_NODE_ID
+#           value: "1"                    # Unique numeric ID for this Kafka node.
+#         - name: KAFKA_CFG_CONTROLLER_LISTENER_NAMES
+#           value: "CONTROLLER"           # Defines which listener is used for controller communication.
+#         - name: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
+#           value: "1@kafka-0.kafka.job-scheduler.svc.cluster.local:9093"
+#                                         # Defines quorum voters (nodeId@address) — essential for KRaft.
+#         - name: KAFKA_CFG_LISTENERS
+#           value: "PLAINTEXT://:9092,CONTROLLER://:9093"
+#                                         # Defines Kafka listener endpoints — for clients and controllers.
+#         - name: KAFKA_CFG_ADVERTISED_LISTENERS
+#           value: "PLAINTEXT://kafka:9092"
+#                                         # How Kafka advertises itself to clients (hostname:port).
+#         volumeMounts:                   # Mount points inside the container.
+#         - name: data                    # References the PVC defined in volumeClaimTemplates.
+#           mountPath: /bitnami/kafka     # Path inside container where data will persist.
+#   volumeClaimTemplates:                 # Template to create a PVC per Pod automatically.    -----PVC
+#   - metadata:
+#       name: data                        # PVC name (will bind to PV with same label).
+#     spec:
+#       accessModes: ["ReadWriteOnce"]    # Single-node writable access.
+#       resources:
+#         requests:
+#           storage: 5Gi                  # Storage amount requested per broker.
+#       storageClassName: local-storage   # Matches PV’s storage class.
+#       selector:                         # Select which PV this PVC can bind to.
+#         matchLabels:
+#           type: local                   # Must match PV label "type: local" above for binding.
+
+# ---
+
+# # Kafka Service (Headless)
+# apiVersion: v1                          # API version for core Service resources.
+# kind: Service                           # Resource kind — creates a Service.
+# metadata:
+#   name: kafka                           # Name of the Service (matches StatefulSet serviceName).
+#   namespace: job-scheduler              # Namespace for the Service.
+# spec:
+#   ports:                                # Ports exposed by this Service.
+#   - port: 9092                          # Port for Kafka client connections.
+#     name: client                        # Named 'client' for clarity.
+#   - port: 9093                          # Port for controller communication.
+#     name: controller                    # Named 'controller' for clarity.
+#   clusterIP: None                       # Makes it a headless Service (required for StatefulSet DNS).
+#   selector:
+#     app: kafka                          # Selects Pods with label app=kafka.
+
+
+
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: kafka-pv
+  labels:
+    type: local
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-storage
+  local:
+    path: /mnt/data/kafka
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - docker-desktop
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kafka-pvc
+  namespace: job-scheduler
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  storageClassName: local-storage
+  selector:
+    matchLabels:
+      type: local
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka
+  namespace: job-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      containers:
+        - name: kafka
+          image: apache/kafka:3.7.0
+          ports:
+            - containerPort: 9092
+            - containerPort: 9093
+          env:
+            - name: KAFKA_PROCESS_ROLES
+              value: "broker,controller"
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: "1@kafka:9093"
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: "CONTROLLER"
+            - name: KAFKA_LISTENERS
+              value: "PLAINTEXT://:9092,CONTROLLER://:9093"
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: "PLAINTEXT://kafka.job-scheduler.svc.cluster.local:9092"
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+            - name: KAFKA_CLUSTER_ID
+              value: "AAAAAAAAAAAAAAAAAAAAAQ"
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
+            - name: KAFKA_LOG_DIRS
+              value: "/var/lib/kafka/data"
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+      volumes:
+        - name: kafka-data
+          persistentVolumeClaim:
+            claimName: kafka-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: job-scheduler
+spec:
+  selector:
+    app: kafka
+  ports:
+    - name: kafka
+      port: 9092
+      targetPort: 9092
+      nodePort: 31092
+  type: NodePort  in this yaml script have the env variable then where this env variables map 

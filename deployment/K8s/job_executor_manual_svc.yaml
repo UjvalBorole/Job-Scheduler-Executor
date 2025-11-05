@@ -1,0 +1,57 @@
+apiVersion: v1                     # The Kubernetes API version used for this resource (v1 is for core resources like ConfigMap, Service).
+kind: ConfigMap                    # The resource kind — here we create a ConfigMap (key/value configuration data).
+metadata:                          # Metadata block: holds identifying information for the resource.
+  name: job-executor-manual-config       # The name of the ConfigMap object (used to reference it from Pods).
+  namespace: job-executor-manual         # The Kubernetes namespace where this ConfigMap will be created.
+data:                              # The data field contains key/value pairs stored in the ConfigMap.
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"  # Key:SPRING_KAFKA_BOOTSTRAP_SERVERS — value used by apps (Kafka bootstrap server address).
+  SPRING_DATA_REDIS_HOST: "redis"  # Key:SPRING_DATA_REDIS_HOST — hostname for Redis that the app will use.
+  SPRING_DATA_REDIS_PORT: "6379"   # Key:SPRING_DATA_REDIS_PORT — port for Redis access (stored as string).
+
+---                                # YAML document separator — starts a new resource in the same file.
+apiVersion: apps/v1                # API version for controller resources (apps/v1 is used for Deployments).
+kind: Deployment                   # Resource kind — creates a Deployment (manages ReplicaSets/Pods).
+metadata:                          # Metadata for the Deployment.
+  name: job-executor-manual-svc          # The name of the Deployment object.
+  namespace: job-executor-manual         # Namespace where the Deployment will be created (same as ConfigMap).
+spec:                              # Specification of the desired state for the Deployment.
+  replicas: 1                      # Number of pod replicas the Deployment should maintain (1 replica).
+  selector:                        # Selector to identify the Pods that belong to this Deployment.
+    matchLabels:                   # Use label matching to select the Pods managed by this Deployment.
+      app: job-executor-manual-svc       # Label key/value used to match pods (must match template.metadata.labels).
+  template:                        # Pod template describing the Pods this Deployment will create.
+    metadata:                      # Metadata for the Pod template.
+      labels:                      # Labels applied to Pods created from this template.
+        app: job-executor-manual-svc     # Label that identifies these pods as part of the job-scheduler-svc app.
+    spec:                          # Pod spec — describes the containers and runtime settings for the pod.
+      containers:                  # List of containers to run in each Pod.
+      - name: job-executor-manual-svc    # Container name (identifier within the Pod).
+        image: boroleujval4/executor-manual-service:latest  # Container image to run (image name and tag).
+        imagePullPolicy: Always   # Image pull policy: Always pull the image before starting the container.
+        ports:                    # Ports that the container exposes.
+        - containerPort: 8083     # The port inside the container that the app listens on (8083).
+        envFrom:                  # Populate container environment variables from external sources.
+        - configMapRef:           # Reference an entire ConfigMap to inject its keys as environment variables.
+            name: job-executor-manual-config  # The name of the ConfigMap to use (defined above).
+        livenessProbe:            # Liveness probe configuration — how Kubernetes checks if the container is alive.
+          httpGet:                # The probe uses an HTTP GET request to check health.
+            path: /actuator/health  # HTTP path used for the health check (common for Spring Boot apps).
+            port: 8083            # Port to call on the container for the health endpoint.
+          initialDelaySeconds: 30 # Time (in seconds) to wait before performing the first liveness check.
+          periodSeconds: 10      # How often (in seconds) to perform the liveness check.
+
+---                                # YAML document separator — starts the Service resource.
+apiVersion: v1                     # API version for the Service resource (core v1).
+kind: Service                      # Resource kind — creates a Service (stable network endpoint for Pods).
+metadata:                          # Metadata for the Service.
+  name: job-executor-manual-svc          # The name of the Service object (often same as Deployment for clarity).
+  namespace: job-executor-manual         # Namespace where the Service will be created (same namespace as Pods).
+spec:                              # Specification of the desired behavior of the Service.
+  selector:                        # Selector used by the Service to find which Pods receive traffic.
+    app: job-executor-manual-svc         # Label selector matching Pods labeled with app: job-scheduler-svc.
+  ports:                           # List of network ports that the Service exposes.
+    - protocol: TCP                # Protocol used by this port (TCP).
+      port: 8083                   # Port that the Service exposes inside the cluster (clusterIP:port).
+      targetPort: 8083             # Port on the Pod to which the Service forwards traffic (containerPort).
+      nodePort: 31003 # NodePort for external access  # NodePort value for exposing the Service on each Node at this port.
+  type: NodePort                    # Service type: NodePort exposes the Service on each Node's IP at the nodePort.
