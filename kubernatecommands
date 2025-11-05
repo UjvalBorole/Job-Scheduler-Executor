@@ -1,0 +1,179 @@
+kubectl rollout restart deployment <deployment-name> -n <namespace> # restart the container
+kubectl delete pod zookeeper-6f565c76d5-8gfc8 -n job-scheduler
+
+
+
+---
+
+## 🟢 **Cluster Info**
+
+```
+kubectl version --short                   # Show kubectl & server version
+kubectl cluster-info                      # Show cluster control plane info
+kubectl get nodes                         # List all nodes
+kubectl describe node <node-name>         # Detailed info about a node
+```
+
+---
+
+## 📦 **Namespaces**
+
+```
+kubectl get namespaces                    # List namespaces
+kubectl create namespace my-namespace     # Create a namespace
+kubectl delete namespace my-namespace     # Delete a namespace
+kubectl config set-context --current --namespace=my-namespace   # Set default namespace
+```
+
+---
+
+## 📋 **Listing Resources**
+
+```
+kubectl get pods                          # List pods in current namespace
+kubectl get pods -n <namespace>           # List pods in specific namespace
+kubectl get svc                           # List services
+kubectl get deployments                   # List deployments
+kubectl get all                           # List all resources in current namespace
+```
+
+---
+
+## 🔍 **Inspecting Resources**
+
+```
+kubectl describe pod <pod-name>           # Detailed pod info
+kubectl describe svc <service-name>       # Detailed service info
+kubectl describe deployment <deployment>  # Detailed deployment info
+```
+
+---
+
+## 🛠 **Pod Logs & Debugging**
+
+```
+kubectl logs <pod-name> -n <namespace>                  # Show logs from a pod
+kubectl logs <pod-name> -c <container>    # Logs from a specific container
+kubectl logs <pod-name> --previous        # Logs from the last crashed container
+kubectl exec -it <pod-name> -- /bin/sh    # Open shell in a pod (sh)
+kubectl exec -it <pod-name> -- /bin/bash  # Open shell in a pod (bash)
+```
+
+---
+
+## 🔄 **Restarting**
+
+```
+kubectl delete pod <pod-name>             # Delete pod (Deployment/ReplicaSet will recreate it)
+kubectl rollout restart deployment <deployment-name>  # Restart all pods in deployment
+```
+
+---
+
+## 📥 **Deploying & Updating**
+
+```
+kubectl apply -f myfile.yaml               # Apply config (create/update)
+kubectl create -f myfile.yaml              # Create resource
+kubectl replace -f myfile.yaml             # Replace resource
+kubectl delete -f myfile.yaml              # Delete resource
+```
+
+---
+
+## 🛰 **Port Forwarding**
+
+```
+kubectl port-forward <pod-name> 8080:80    # Local 8080 → Pod port 80
+kubectl port-forward svc/my-service 8080:80 # Local 8080 → Service port 80
+```
+
+---
+
+## 📤 **Copy Files**
+
+```
+kubectl cp localfile.txt <pod-name>:/path/in/pod   # Copy to pod
+kubectl cp <pod-name>:/path/in/pod localfile.txt   # Copy from pod
+```
+
+---
+
+## 📜 **Rollouts**
+
+```
+kubectl rollout status deployment <deployment-name>  # Show rollout status
+kubectl rollout history deployment <deployment-name> # Show rollout history
+kubectl rollout undo deployment <deployment-name>    # Rollback to previous version
+```
+
+---
+
+## 🗑 **Deleting**
+
+```
+kubectl delete pod <pod-name>             # Delete pod
+kubectl delete svc <service-name>         # Delete service
+kubectl delete deployment <deployment>    # Delete deployment
+kubectl delete all --all                   # Delete everything in namespace
+```
+
+---
+
+## 🧪 **Debugging Pod DNS**
+
+```
+kubectl exec -it <pod-name> -- nslookup my-service
+kubectl exec -it <pod-name> -- ping my-service
+```
+
+---
+
+# 1️⃣ See all resources in the namespace (deployments, pods, services, etc.)
+kubectl get all -n job-scheduler
+
+# 2️⃣ Check the exact Docker image version running
+kubectl get deployment -n job-scheduler \
+  -o=jsonpath="{range .items[*]}{.metadata.name}{': '}{.spec.template.spec.containers[0].image}{'\n'}{end}"
+
+# 3️⃣ Watch pods start and restart in real time after Jenkins deployment
+kubectl get pods -n job-scheduler -w
+
+# 4️⃣ Describe a deployment for detailed update info
+kubectl describe deployment <deployment-name> -n job-scheduler
+
+# 5️⃣ See logs from a specific pod
+kubectl logs -n job-scheduler <pod-name>
+
+---
+
+# How to check if your changes are applied
+# You can verify in a few ways:
+
+# 1️⃣ Check pod creation time
+# When Jenkins deploys, old pods are terminated and new pods are created with a new AGE.
+
+# powershell
+kubectl get pods -n job-scheduler --sort-by=.metadata.creationTimestamp
+# If your updated service was deployed 36 seconds ago, you’ll see new pods with an AGE of seconds/minutes instead of hours/days.
+
+# 2️⃣ Describe the pod
+# You can check the image version Jenkins deployed:
+
+# powershell
+kubectl describe pod job-consumer-svc-7dbc5f764b-xs7zk -n job-scheduler | findstr "Image:"
+# If Jenkins pushed a new Docker image, the tag or digest should match the one you expect.
+
+# 3️⃣ View rollout history
+# If you’re using a Deployment, you can see if Kubernetes applied an update:
+
+# powershell
+kubectl rollout history deployment job-consumer-svc -n job-scheduler
+# This will show revision numbers and timestamps for each change.
+
+# 4️⃣ Watch logs in real time
+# If your code changes are visible in logs:
+
+# powershell
+kubectl logs -f job-consumer-svc-7dbc5f764b-xs7zk -n job-scheduler
+# Run this after deployment — if you changed logging messages in your code, they should show here.

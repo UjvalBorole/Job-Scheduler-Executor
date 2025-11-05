@@ -1,0 +1,226 @@
+// pipeline {
+//   agent any
+//   tools {
+//     maven 'maven_3_5_0'
+//   }
+//   environment {
+//     GIT_CREDENTIAL_ID = 'github-credential'
+//     DOCKER_HUB_USERNAME = 'boroleujval4'
+//   }
+
+//   stages {
+//     stage('Checkout') {
+//       steps {
+//         git branch: 'main',
+//             credentialsId: "${GIT_CREDENTIAL_ID}",
+//             url: 'https://github.com/UjvalBorole/Job-Scheduler'
+//       }
+//     }
+
+//     stage('Build') {
+//       steps {
+//         script {
+//           ["Job Management/JobConsumerSvc", 
+//            "Job Management/JobService",
+//            "Job Scheduling/watcher"].each { service ->
+//             dir(service) {
+//               sh 'mvn clean install -DskipTests'
+//             }
+//           }
+//         }
+//       }
+//     }
+
+//     stage('Docker Build') {
+//       steps {
+//         script {
+//           ["job-consumer-svc": "Job Management/JobConsumerSvc",
+//            "job_service": "Job Management/JobService",
+//            "job_scheduler_svc": "Job Scheduling/watcher"].each { image, service ->
+//             dir(service) {
+//               sh "docker build -t ${DOCKER_HUB_USERNAME}/${image} ."
+//             }
+//           }
+//         }
+//       }
+//     }
+
+//     stage('Docker Push') {
+//       steps {
+//         script {
+//           withCredentials([usernamePassword(
+//             credentialsId: 'dockerhub-creds',
+//             usernameVariable: 'DOCKER_USER',
+//             passwordVariable: 'DOCKER_PASS'
+//           )]) {
+//             sh '''
+//               echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
+//               docker push ${DOCKER_HUB_USERNAME}/job-consumer-svc
+//               docker push ${DOCKER_HUB_USERNAME}/job_service
+//               docker push ${DOCKER_HUB_USERNAME}/job_scheduler_svc
+//               docker logout
+//             '''
+//           }
+//         }
+//       }
+//     }
+//   }
+
+//   post {
+//     failure {
+//       echo "❌ Build failed. Check logs."
+//     }
+//     success {
+//       echo "✅ All microservices built and Docker images pushed successfully."
+//     }
+//     always {
+//       sh 'docker logout || true'
+//     }
+//   }
+// }
+
+
+
+
+
+
+
+
+pipeline {
+    agent any
+    tools {
+        maven 'maven_3_5_0'
+    }
+    environment {
+        GIT_CREDENTIAL_ID = 'github-credential'
+        DOCKER_HUB_USERNAME = 'boroleujval4'
+        DOCKER_CREDENTIAL_ID = 'dockerhub-creds'
+        K8S_DEPLOYMENT_DIR = 'K8s'   // folder where YAML files are stored
+    }
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                git branch: 'main',
+                    credentialsId: "${GIT_CREDENTIAL_ID}",
+                    url: 'https://github.com/UjvalBorole/Job-Scheduler'
+            }
+        }
+
+        stage('Build Maven Projects') {
+            steps {
+                script {
+                    ["Job Management/JobConsumerSvc", 
+                     "Job Management/JobService",
+                     "Job Scheduling/watcher"].each { service ->
+                        dir(service) {
+                            sh 'mvn clean install -DskipTests'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Docker Build & Push') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: "${DOCKER_CREDENTIAL_ID}",
+                        usernameVariable: 'DOCKER_USER',
+                        passwordVariable: 'DOCKER_PASS'
+                    )]) {
+                        sh 'echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin'
+
+                        def services = [
+                            "job-consumer-svc": "Job Management/JobConsumerSvc",
+                            "job_service": "Job Management/JobService",
+                            "job_scheduler_svc": "Job Scheduling/watcher"
+                        ]
+
+                        services.each { image, service ->
+                            dir(service) {
+                                sh "docker build -t ${DOCKER_HUB_USERNAME}/${image}:${BUILD_NUMBER} ."
+                                sh "docker push ${DOCKER_HUB_USERNAME}/${image}:${BUILD_NUMBER}"
+                            }
+                        }
+
+                        sh 'docker logout'
+                    }
+                }
+            }
+        }
+        stage('Install dos2unix') {
+            steps {
+                sh 'apt-get update && apt-get install -y dos2unix'
+            }
+        }
+
+        stage('Normalize YAML Line Endings') {
+            steps {
+                sh 'find ${K8S_DEPLOYMENT_DIR} -type f -name "*.yaml" -exec dos2unix {} +'
+            }
+        }
+
+        stage('Update Kubernetes YAMLs') {
+            steps {
+                script {
+                    // Only update YAMLs for the microservices we built
+                    def serviceMap = [
+                        "job-consumer-svc": "job-consumer-svc.yaml",
+                        "job_service": "job_service.yaml",
+                        "job_scheduler_svc": "job_scheduler_svc.yaml"
+                    ]
+
+                    serviceMap.each { imageName, yamlFile ->
+                        sh """
+                        sed -i "s|image: *${DOCKER_HUB_USERNAME}/${imageName}:.*|image: ${DOCKER_HUB_USERNAME}/${imageName}:${BUILD_NUMBER}|" ${K8S_DEPLOYMENT_DIR}/${yamlFile}
+                        if ! grep -q "imagePullPolicy:" ${K8S_DEPLOYMENT_DIR}/${yamlFile}; then
+                            sed -i "/image:/a \\    imagePullPolicy: Always" ${K8S_DEPLOYMENT_DIR}/${yamlFile}
+                        else
+                            sed -i "s|imagePullPolicy:.*|imagePullPolicy: Always|" ${K8S_DEPLOYMENT_DIR}/${yamlFile}
+                        fi
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Validate Kubernetes YAMLs') {
+            steps {
+                // Dry run to ensure YAML is valid before actual deployment
+                sh 'kubectl apply --dry-run=client -f ${K8S_DEPLOYMENT_DIR}/'
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh "kubectl apply -f ${K8S_DEPLOYMENT_DIR}/"
+            }
+        }
+        stage('Verify Kubernetes Deployment') {
+          steps {
+              sh '''
+              echo "Checking rollout status for all deployments in namespace job-scheduler..."
+              kubectl rollout status deployment job-consumer-svc -n job-scheduler
+              kubectl rollout status deployment job-service -n job-scheduler
+              kubectl rollout status deployment job-scheduler-svc -n job-scheduler
+
+              echo "Listing pods and their images..."
+              kubectl get pods -n job-scheduler -o wide
+              kubectl get deployment -n job-scheduler -o=jsonpath="{range .items[*]}{.metadata.name}{': '}{.spec.template.spec.containers[0].image}{'\\n'}{end}"
+              '''
+          }
+        }
+
+    }
+
+    post {
+        failure {
+            echo "❌ Build failed. Check logs."
+        }
+        success {
+            echo "✅ Build, push, and deployment completed successfully."
+        }
+    }
+}

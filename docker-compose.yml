@@ -1,6 +1,48 @@
 # version: "3.8"
+services:  
+  # jenkins_compose:
+  #   image: jenkins/jenkins:lts
+  #   container_name: jenkins_compose
+  #   privileged: true
+  #   user: root
+  #   ports:
+  #     - "8079:8080"
+  #     - "50001:50000"
+  #   volumes:
+  #     - jenkins_compose_home:/var/jenkins_home
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - ./jenkins:/var/jenkins_home/pipeline
+  #   environment:
+  #     - JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
+  #     - DOCKER_HOST=unix:///var/run/docker.sock
+    
+  #   networks:
+  #     - backend
+  #   restart: unless-stopped
 
-services:
+  jenkins_compose:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jenkins_compose
+    privileged: true
+    user: root
+    ports:
+      - "8079:8080"
+      - "50001:50000"
+    volumes:
+      - jenkins_compose_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./jenkins:/var/jenkins_home/pipeline
+      - ~/.kube:/root/.kube   # <-- Mount your kubeconfig here
+    environment:
+      - JAVA_OPTS=-Dhudson.plugins.git.GitSCM.ALLOW_LOCAL_CHECKOUT=true
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    networks:
+      - backend
+    restart: unless-stopped
+
+
   postgres:
     container_name: postgres_container #this is the host name
     image: postgres:14
@@ -56,30 +98,69 @@ services:
     restart: unless-stopped
 
   kafka:
-    image: confluentinc/cp-kafka:7.5.0
+
+    # image: confluentinc/cp-kafka:7.5.0
+    # container_name: kafka
+    # ports:
+    #   - "9092:9092"
+    #   - "29092:29092"  # For external access
+    # environment:
+    #   KAFKA_BROKER_ID: 1
+    #   KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+    #   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+    #   KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+    #   KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+    #   KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    #   KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    # depends_on:
+    #   zookeeper:
+    #     condition: service_healthy
+    # networks:
+    #   - backend
+    # healthcheck:
+    #   test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
+    #   interval: 10s
+    #   timeout: 20s
+    #   retries: 10
+    #   start_period: 40s  # Give Kafka 40s to initialize before health checks
+
+    image: bitnami/kafka:3.6
     container_name: kafka
     ports:
       - "9092:9092"
-      - "29092:29092"  # For external access
+      - "29092:29092"
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-    depends_on:
-      zookeeper:
-        condition: service_healthy
+      # KRaft Configuration
+      KAFKA_CFG_PROCESS_ROLES: "controller,broker"
+      KAFKA_CFG_NODE_ID: "1"
+      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      
+      # Corrected Listeners Configuration
+      KAFKA_CFG_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092"
+      KAFKA_CFG_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092"
+      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT"
+      
+      # Cluster ID
+      KAFKA_KRAFT_CLUSTER_ID: "AAAAAAAAAAAAAAAAAAAAAQ"
+      
+      # Storage
+      KAFKA_CFG_LOG_DIRS: "/bitnami/kafka/data"
+      
+      # Other Settings
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+    volumes:
+      - kafka_data:/bitnami/kafka
     networks:
       - backend
     healthcheck:
-      test: ["CMD", "kafka-topics", "--bootstrap-server", "kafka:9092", "--list"]
-      interval: 10s
-      timeout: 20s
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 0"]
+      interval: 20s
+      timeout: 30s
       retries: 10
-      start_period: 40s  # Give Kafka 40s to initialize before health checks
+      start_period: 120s
     restart: unless-stopped
 
   redis:
@@ -100,7 +181,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-    
     restart: unless-stopped
 
   job-consumer-svc: # Dokcer does not allowed Job_Consumer_Service this type of namingConvention
@@ -188,6 +268,10 @@ services:
 volumes:
   postgres:
   pgadmin:
+
+  kafka_data:
+  jenkins_compose_home:
+
 
 networks:
   backend:
