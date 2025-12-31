@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-schedulersvc
+  namespace: job-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: job-schedulersvc
+  template:
+    metadata:
+      labels:
+        app: job-schedulersvc
+    spec:
+      containers:
+        - name: job-schedulersvc
+          image: boroleujval4/job-schedulersvc:1.0.0
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8083
+
+          env:
+            - name: TZ
+              value: Asia/Kolkata
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Duser.timezone=Asia/Kolkata"
+            - name: DEBUG
+              value: "false"
+            # === Application Name ===
+            - name: SPRING_APPLICATION_NAME
+              value: "scheduler"
+            # === Kafka ===
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+
+            # === Server ===
+            - name: SERVER_PORT
+              value: "8083"
+
+            # === Spring Profile ===
+            - name: SPRING_PROFILES_ACTIVE
+              value: "eureka"
+
+            # === Redis (MATCH docker compose) ===
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+
+            # === Tracing ===
+            - name: MANAGEMENT_TRACING_ENABLED
+              value: "true"
+            - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+              value: "http://tempo:9411/api/v2/spans"
+
+            # === Downstream Service URL ===
+            - name: WEBCLIENT_BASE_URL
+              value: "http://CONSUMER"
+
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            initialDelaySeconds: 30
+            periodSeconds: 10
+---

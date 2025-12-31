@@ -1,0 +1,31 @@
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: kafka
+#   namespace: job-scheduler
+# spec:
+#   selector:
+#     app: kafka
+#   ports:
+#     - name: kafka
+#       port: 9092
+#       targetPort: 9092
+#   type: ClusterIP
+
+
+# ----------------------------------------
+# Kafka client service (for applications)
+# ----------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-client
+  namespace: job-scheduler
+spec:
+  type: ClusterIP
+  selector:
+    app: kafka
+  ports:
+    - port: 9092
+      targetPort: 9092
+      name: client

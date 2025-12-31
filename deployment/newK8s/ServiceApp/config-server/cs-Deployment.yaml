@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: config-server
+  namespace: job-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: config-server
+  template:
+    metadata:
+      labels:
+        app: config-server
+    spec:
+      nodeSelector:
+        node-type: serviceapp
+      containers:
+      - name: config-server
+        image: boroleujval4/job-configserver:1.0.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8092
+        env:
+        - name: TZ
+          value: Asia/Kolkata
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Duser.timezone=Asia/Kolkata"
+        - name: SPRING_APPLICATION_NAME
+          value: "config-server"
+        - name: SERVER_PORT
+          value: "8092"
+        - name: SPRING_CLOUD_CONFIG_SERVER_GIT_URI
+          value: "https://github.com/zaccode/microservice"
+        - name: SPRING_CLOUD_CONFIG_SERVER_GIT_CLONE_ON_START
+          value: "true"
+        - name: SPRING_CLOUD_CONFIG_SERVER_GIT_DEFAULT_LABEL
+          value: "main"
+        - name: EUREKA_CLIENT_SERVICEURL_DEFAULTZONE
+          value: "http://discovery-service:8090/eureka/"
+        - name: MANAGEMENT_TRACING_ENABLED
+          value: "true"
+        - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+          value: "http://tempo:9411/api/v2/spans"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8092
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+# apiVersion: v1
+# kind: Service
+# metadata:
+#   name: config-server
+#   namespace: job-scheduler
+# spec:
+#   selector:
+#     app: config-server
+#   ports:
+#     - protocol: TCP
+#       port: 8092
+#       targetPort: 8092
+#       nodePort: 31092
+#   type: NodePort
+
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: config-server
+  namespace: job-scheduler
+spec:
+  selector:
+    app: config-server
+  ports:
+    - protocol: TCP
+      port: 8092          # Cluster-internal port
+      targetPort: 8092    # Pod container port
+  type: ClusterIP        # Internal access only

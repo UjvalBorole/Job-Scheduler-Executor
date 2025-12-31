@@ -1,0 +1,319 @@
+---
+
+## 1️⃣ **Namespace**
+
+Since we are using **`job-scheduler`** as the single namespace:
+
+```bash
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: job-scheduler
+EOF
+```
+
+Or if you already have a YAML file:
+
+```bash
+kubectl apply -f namespace.yaml
+```
+
+Check it:
+
+```bash
+kubectl get ns
+```
+
+---
+
+## 2️⃣ **Apply ConfigMaps (if any)**
+
+Example for Kafka / MongoDB / PostgreSQL:
+
+```bash
+kubectl apply -f kafka-configmap.yaml
+kubectl apply -f mongo-configmap.yaml
+kubectl apply -f postgres-configmap.yaml
+```
+
+---
+
+## 3️⃣ **Deploy StatefulSets**
+
+For infra, **Kafka, Redis, MongoDB, PostgreSQL** are **stateful applications**.
+
+### **3a. Kafka**
+
+```bash
+kubectl apply -f kafka-statefulset.yaml
+```
+
+Check pods:
+
+```bash
+kubectl get pods -n job-scheduler -l app=kafka -o wide
+```
+
+Check PVCs:
+
+```bash
+kubectl get pvc -n job-scheduler
+```
+
+---
+
+### **3b. Redis**
+
+```bash
+kubectl apply -f redis-statefulset.yaml
+```
+
+Check pods:
+
+```bash
+kubectl get pods -n job-scheduler -l app=redis
+```
+
+---
+
+### **3c. MongoDB**
+
+```bash
+kubectl apply -f mongodb-statefulset.yaml
+```
+
+Check pods & PVCs:
+
+```bash
+kubectl get pods -n job-scheduler -l app=mongodb
+kubectl get pvc -n job-scheduler
+```
+
+---
+
+### **3d. PostgreSQL**
+
+```bash
+kubectl apply -f postgres-statefulset.yaml
+```
+
+Check pods & PVCs:
+
+```bash
+kubectl get pods -n job-scheduler -l app=postgres
+kubectl get pvc -n job-scheduler
+```
+
+---
+
+## 4️⃣ **Deploy Services**
+
+All **ClusterIP / Headless services** are included in the YAMLs, so `kubectl apply` automatically creates them.
+
+Check:
+
+```bash
+kubectl get svc -n job-scheduler
+```
+
+---
+
+## 5️⃣ **Verify Storage**
+
+Make sure `local-path` storage class is working:
+
+```bash
+kubectl get sc
+kubectl get pvc -n job-scheduler
+kubectl describe pvc <pvc-name> -n job-scheduler
+```
+
+---
+
+## 6️⃣ **Check NodeSelector**
+
+Ensure pods are scheduled on correct nodes:
+
+```bash
+kubectl get pods -n job-scheduler -o wide
+```
+
+You should see **`NODE` column = kind-worker-infra`** for Kafka/Redis/MongoDB/Postgres.
+
+---
+
+## 7️⃣ **Tail Logs**
+
+Check container logs for errors:
+
+```bash
+kubectl logs -n job-scheduler kafka-0
+kubectl logs -n job-scheduler redis-0
+kubectl logs -n job-scheduler mongodb-0
+kubectl logs -n job-scheduler postgres-0
+```
+
+---
+
+## ✅ **Recommended Sequence**
+
+1. Create **Namespace**
+2. Apply **ConfigMaps**
+3. Apply **StatefulSets** (Kafka → Redis → Mongo → Postgres)
+4. Verify **PVCs** & **Pods**
+5. Apply **Services** (included in YAMLs)
+6. Test connections from pods or `kubectl exec`
+
+---
+
+kubectl delete statefulset kafka -n job-scheduler
+
+
+kubectl logs kafka-0 -n job-scheduler --tail=50
+
+
+Got it! You want a **full set of commands to inspect all your Kubernetes resources** for Kafka, MongoDB, Postgres, Zookeeper — essentially everything that is deployed. I’ll break it down clearly so you can systematically check pods, volumes, configs, and networking.
+
+---
+
+## **1. Check all namespaces**
+
+```bash
+kubectl get namespaces
+```
+
+Make sure you are targeting the correct namespace (`job-scheduler` in your case).
+
+---
+
+## **2. Check all pods**
+
+```bash
+kubectl get pods -n job-scheduler
+kubectl get pods -n job-scheduler -o wide   # shows node, IP, status
+kubectl describe pod <pod-name> -n job-scheduler
+kubectl logs <pod-name> -n job-scheduler    # check logs
+kubectl logs <pod-name> -n job-scheduler --previous   # logs from previous crash
+```
+
+---
+
+## **3. Check StatefulSets / Deployments**
+
+```bash
+kubectl get statefulsets -n job-scheduler
+kubectl describe statefulset <statefulset-name> -n job-scheduler
+
+kubectl get deployments -n job-scheduler
+kubectl describe deployment <deployment-name> -n job-scheduler
+```
+
+---
+
+## **4. Check Services**
+
+```bash
+kubectl get svc -n job-scheduler
+kubectl describe svc <service-name> -n job-scheduler
+```
+
+* This will show the ClusterIP, ports, and which pods are targeted.
+* Use `clusterIP: None` for headless services (used for Kafka/Zookeeper).
+
+---
+
+## **5. Check PersistentVolumeClaims / PersistentVolumes**
+
+```bash
+kubectl get pvc -n job-scheduler
+kubectl describe pvc <pvc-name> -n job-scheduler
+
+kubectl get pv
+kubectl describe pv <pv-name>
+```
+
+* Ensures your Kafka, MongoDB, Postgres have storage attached correctly.
+
+---
+
+## **6. Check ConfigMaps / Secrets**
+
+```bash
+kubectl get configmap -n job-scheduler
+kubectl describe configmap <configmap-name> -n job-scheduler
+
+kubectl get secret -n job-scheduler
+kubectl describe secret <secret-name> -n job-scheduler
+```
+
+* Useful for environment variables, connection strings, passwords.
+
+---
+
+## **7. Check events / cluster issues**
+
+```bash
+kubectl get events -n job-scheduler --sort-by='.metadata.creationTimestamp'
+```
+
+* Helps debug image pull errors, pod restarts, PVC issues.
+
+---
+
+## **8. Check node status / resources**
+
+```bash
+kubectl get nodes -o wide
+kubectl describe node <node-name>
+```
+
+* Useful if pods are failing to schedule (`nodeSelector` issues, insufficient CPU/memory).
+
+---
+
+## **9. Check Kafka / Zookeeper health**
+
+* If using Confluent images, you can exec into pods:
+
+```bash
+kubectl exec -it kafka-0 -n job-scheduler -- bash
+kafka-topics --bootstrap-server localhost:9092 --list
+kafka-consumer-groups --bootstrap-server localhost:9092 --list
+```
+
+* Zookeeper:
+
+```bash
+kubectl exec -it zookeeper-0 -n job-scheduler -- zkCli.sh -server localhost:2181
+```
+
+---
+
+## **10. Quick one-liner to see all resources in namespace**
+
+```bash
+kubectl get all -n job-scheduler
+```
+
+* Shows pods, services, deployments, replica sets.
+* Combine with `kubectl get pvc,configmap,secret -n job-scheduler` to see everything.
+
+---
+
+
+
+8️⃣ Kafka & Zookeeper Health Checks
+# Kafka topics
+kubectl exec -it kafka-0 -n job-scheduler -- kafka-topics --bootstrap-server localhost:9092 --list
+
+# Kafka consumer groups
+kubectl exec -it kafka-0 -n job-scheduler -- kafka-consumer-groups --bootstrap-server localhost:9092 --list
+
+# Zookeeper CLI
+kubectl exec -it zookeeper-0 -n job-scheduler -- zkCli.sh -server localhost:2181 ls /
+
+
+If you want, I can make a **ready-made “checklist command set”** that runs in sequence and outputs all statuses for Kafka, Mongo, Postgres, Zookeeper, including pods, logs, PVCs, services — so you can debug your entire stack in one go.
+
+Do you want me to prepare that?

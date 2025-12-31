@@ -1,0 +1,481 @@
+
+---
+
+# 🧨 Kubernetes Deletion Commands – Cheat Sheet
+
+---
+
+## 🔹 1. Delete a **Pod**
+
+```bash
+kubectl delete pod <pod-name> -n <namespace>
+```
+
+Force delete (stuck pod):
+
+```bash
+kubectl delete pod <pod-name> -n <namespace> --grace-period=0 --force
+```
+
+Delete all pods with a label:
+
+```bash
+kubectl delete pod -n job-scheduler -l app=job-service
+```
+
+---
+
+## 🔹 2. Delete a **Deployment**
+
+```bash
+kubectl delete deployment <deployment-name> -n <namespace>
+```
+
+Example:
+
+```bash
+kubectl delete deployment job-service -n job-scheduler
+```
+
+---
+
+## 🔹 3. Delete a **StatefulSet** (Kafka, DBs, Loki)
+
+```bash
+kubectl delete statefulset <name> -n <namespace>
+```
+
+⚠️ Pods will be deleted, **PVCs stay unless removed manually**
+
+---
+
+## 🔹 4. Delete a **Service**
+
+```bash
+kubectl delete service <service-name> -n <namespace>
+```
+
+Example:
+
+```bash
+kubectl delete svc job-consumer-nodeport -n job-scheduler
+```
+
+---
+
+## 🔹 5. Delete a **ConfigMap**
+
+```bash
+kubectl delete configmap <configmap-name> -n <namespace>
+```
+
+Example:
+
+```bash
+kubectl delete cm job-service-config -n job-scheduler
+```
+
+---
+
+## 🔹 6. Delete a **Secret**
+
+```bash
+kubectl delete secret <secret-name> -n <namespace>
+```
+
+Example:
+
+```bash
+kubectl delete secret db-credentials -n job-scheduler
+```
+
+---
+
+## 🔹 7. Delete a **PVC (PersistentVolumeClaim)**
+
+```bash
+kubectl delete pvc <pvc-name> -n <namespace>
+```
+
+Example:
+
+```bash
+kubectl delete pvc jobservice-pvc -n job-scheduler
+```
+
+🔴 **Data loss warning** – volume data will be gone (unless Retain policy)
+
+---
+
+## 🔹 8. Delete a **PersistentVolume (PV)**
+
+```bash
+kubectl delete pv <pv-name>
+```
+
+List PVs:
+
+```bash
+kubectl get pv
+```
+
+---
+
+## 🔹 9. Delete an **HPA**
+
+```bash
+kubectl delete hpa <hpa-name> -n <namespace>
+```
+
+Example:
+
+```bash
+kubectl delete hpa job-service-hpa -n job-scheduler
+```
+
+---
+
+## 🔹 10. Delete a **DaemonSet** (Promtail)
+
+```bash
+kubectl delete daemonset <name> -n <namespace>
+```
+
+Example:
+
+```bash
+kubectl delete daemonset promtail -n monitoring
+```
+
+---
+
+## 🔹 11. Delete an **Ingress**
+
+```bash
+kubectl delete ingress <ingress-name> -n <namespace>
+```
+
+---
+
+## 🔹 12. Delete **RBAC Resources**
+
+ServiceAccount:
+
+```bash
+kubectl delete sa promtail -n job-scheduler
+```
+
+ClusterRole:
+
+```bash
+kubectl delete clusterrole promtail
+```
+
+ClusterRoleBinding:
+
+```bash
+kubectl delete clusterrolebinding promtail
+```
+
+---
+
+## 🔹 13. Delete an Entire **Namespace** (🔥 Nuclear Option)
+
+```bash
+kubectl delete namespace job-scheduler
+```
+
+⚠️ Deletes **everything inside**:
+
+* Pods
+* Services
+* Deployments
+* PVCs
+* ConfigMaps
+* Secrets
+
+---
+
+## 🔹 14. Delete Resources Using YAML File
+
+```bash
+kubectl delete -f deployment.yaml
+```
+
+Multiple files:
+
+```bash
+kubectl delete -f .
+```
+
+---
+
+## 🔹 15. Bulk Delete by Resource Type
+
+Delete all deployments:
+
+```bash
+kubectl delete deployment --all -n job-scheduler
+```
+
+Delete all services:
+
+```bash
+kubectl delete svc --all -n job-scheduler
+```
+
+Delete everything except PVCs:
+
+```bash
+kubectl delete all --all -n job-scheduler
+```
+
+---
+
+## 🔹 16. Cleanup Stuck / Terminating Resources
+
+Remove finalizers:
+
+```bash
+kubectl patch <resource> <name> -n <namespace> \
+-p '{"metadata":{"finalizers":null}}' --type=merge
+```
+
+---
+
+# ✅ Common Safe Cleanup Order (Recommended)
+
+```text
+1. HPA
+2. Ingress
+3. Services
+4. Deployments / StatefulSets
+5. DaemonSets
+6. ConfigMaps / Secrets
+7. PVCs
+8. Namespace (if needed)
+```
+
+---
+
+# 📌 Quick Reference Table
+
+| Resource   | Command                 |
+| ---------- | ----------------------- |
+| Pod        | `kubectl delete pod`    |
+| Deployment | `kubectl delete deploy` |
+| Service    | `kubectl delete svc`    |
+| ConfigMap  | `kubectl delete cm`     |
+| Secret     | `kubectl delete secret` |
+| PVC        | `kubectl delete pvc`    |
+| PV         | `kubectl delete pv`     |
+| HPA        | `kubectl delete hpa`    |
+| Namespace  | `kubectl delete ns`     |
+
+---
+
+========================================================================================================================
+
+---
+
+# 🧹 1️⃣ SAFE CLEANUP SCRIPT (Job Scheduler Stack)
+
+This script **cleans everything safely** without breaking the cluster.
+
+### 📌 What it deletes
+
+* Deployments
+* StatefulSets
+* Services
+* HPAs
+* DaemonSets
+* ConfigMaps
+* Secrets
+* (Optionally) PVCs
+
+---
+
+### 🔹 `cleanup-job-scheduler.sh`
+
+```bash
+#!/bin/bash
+
+NAMESPACE=job-scheduler
+
+echo "🔴 Cleaning namespace: $NAMESPACE"
+
+echo "▶ Deleting HPAs"
+kubectl delete hpa --all -n $NAMESPACE --ignore-not-found
+
+echo "▶ Deleting Services"
+kubectl delete svc --all -n $NAMESPACE --ignore-not-found
+
+echo "▶ Deleting Deployments"
+kubectl delete deploy --all -n $NAMESPACE --ignore-not-found
+
+echo "▶ Deleting StatefulSets"
+kubectl delete sts --all -n $NAMESPACE --ignore-not-found
+
+echo "▶ Deleting DaemonSets"
+kubectl delete ds --all -n $NAMESPACE --ignore-not-found
+
+echo "▶ Deleting ConfigMaps"
+kubectl delete cm --all -n $NAMESPACE --ignore-not-found
+
+echo "▶ Deleting Secrets (except default)"
+kubectl get secrets -n $NAMESPACE \
+  | grep -v default-token \
+  | awk '{print $1}' \
+  | xargs kubectl delete secret -n $NAMESPACE --ignore-not-found
+
+echo "✅ Cleanup completed (PVCs not deleted)"
+```
+
+Make executable:
+
+```bash
+chmod +x cleanup-job-scheduler.sh
+```
+
+Run:
+
+```bash
+./cleanup-job-scheduler.sh
+```
+
+---
+
+# 🧨 2️⃣ PVC CLEANUP SCRIPT (Only if you WANT data deletion)
+
+⚠️ **Kafka / DB data will be lost**
+
+```bash
+kubectl delete pvc --all -n job-scheduler
+```
+
+---
+
+# 🔄 3️⃣ FULL REDEPLOY ORDER (IMPORTANT)
+
+Deploy **in this exact order** 👇
+
+```text
+1️⃣ Zookeeper
+2️⃣ Kafka
+3️⃣ Redis
+4️⃣ Postgres / MongoDB
+5️⃣ ConfigMaps + Secrets
+6️⃣ Job Scheduler
+7️⃣ Job Service
+8️⃣ Job Consumer
+9️⃣ Job Executor (cron + manual)
+🔟 API Gateway
+```
+
+---
+
+# 🧪 4️⃣ VERIFY EVERYTHING IS WORKING (ONE SCRIPT)
+
+### 🔹 `health-check.sh`
+
+```bash
+#!/bin/bash
+
+NS=job-scheduler
+
+echo "📦 Pods"
+kubectl get pods -n $NS -o wide
+
+echo ""
+echo "🌐 Services"
+kubectl get svc -n $NS
+
+echo ""
+echo "📀 PVCs"
+kubectl get pvc -n $NS
+
+echo ""
+echo "⚙️ Deployments"
+kubectl get deploy -n $NS
+
+echo ""
+echo "📊 StatefulSets"
+kubectl get sts -n $NS
+
+echo ""
+echo "🔥 Events (last 20)"
+kubectl get events -n $NS --sort-by=.metadata.creationTimestamp | tail -20
+```
+
+Run:
+
+```bash
+chmod +x health-check.sh
+./health-check.sh
+```
+
+---
+
+# 🧪 5️⃣ KAFKA MESSAGE TEST (REAL VERIFICATION)
+
+### Produce
+
+```bash
+kubectl exec -it kafka-0 -n job-scheduler -- \
+kafka-console-producer \
+--bootstrap-server kafka:9092 \
+--topic test-topic
+```
+
+Type message:
+
+```
+hello-from-producer
+```
+
+### Consume
+
+```bash
+kubectl exec -it kafka-1 -n job-scheduler -- \
+kafka-console-consumer \
+--bootstrap-server kafka:9092 \
+--topic test-topic \
+--from-beginning
+```
+
+✔️ If message appears → Kafka is healthy
+
+---
+
+# 📌 6️⃣ COMMON FAILURE QUICK FIXES
+
+### ImagePullBackOff
+
+```bash
+kubectl describe pod <pod> -n job-scheduler
+```
+
+### CrashLoopBackOff
+
+```bash
+kubectl logs <pod> -n job-scheduler --previous
+```
+
+### Kafka broker not connecting
+
+```bash
+kubectl exec -it kafka-0 -n job-scheduler -- env | grep KAFKA
+```
+
+---
+
+# 🎯 WHAT YOU HAVE NOW
+
+✔ Production-grade cleanup
+✔ Safe redeploy flow
+✔ Health verification
+✔ Kafka real message test
+✔ Debug strategy
+
+---
+

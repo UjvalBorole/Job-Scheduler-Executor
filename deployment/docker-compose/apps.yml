@@ -1,4 +1,4 @@
-name: 'spring-boot-microservices'
+name: 'Service-Apps'
 services:
   # =========================
   # Eureka Discovery Service

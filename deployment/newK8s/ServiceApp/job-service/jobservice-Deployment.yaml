@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-service
+  namespace: job-scheduler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: job-service
+  template:
+    metadata:
+      labels:
+        app: job-service
+        logging: promtail
+    spec:
+      nodeSelector:
+        node-type: serviceapp
+      containers:
+        - name: job-service
+          image: boroleujval4/job-service:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8081
+          envFrom:
+            - configMapRef:
+                name: job-service-config
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8081
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8081
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: shared-uploads
+              mountPath: /data/uploads
+          resources:
+            limits:
+              memory: "700Mi"
+            requests:
+              memory: "500Mi"
+      volumes:
+      - name: shared-uploads
+        hostPath:
+          path: /var/data/job-uploads
+          type: DirectoryOrCreate
+---
+
+# apiVersion: apps/v1
+# kind: Deployment
+# metadata:
+#   name: job-service
+#   namespace: job-scheduler
+# spec:
+#   replicas: 2
+#   selector:
+#     matchLabels:
+#       app: job-service
+#   template:
+#     metadata:
+#       labels:
+#         app: job-service
+#         logging: promtail
+#     spec:
+#       nodeSelector:
+#         node-type: serviceapp
+#       containers:
+#         - name: job-service
+#           image: boroleujval4/job-service:1.0.0
+#           imagePullPolicy: Always
+#           ports:
+#             - containerPort: 8081
+
+#           env:
+            # - name: REDIS_HOST
+            #   value: "redis"
+            # - name: REDIS_PORT
+            #   value: "6379"
+#             - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+#               value: "kafka:9092"
+#             # - name: SPRING_REDIS_HOST
+#             #   value: "redis"
+#             # - name: SPRING_REDIS_PORT
+#             #   value: "6379"
+#             - name: SPRING_PROFILES_ACTIVE
+#               value: "eureka"
+#             - name: SERVER_PORT
+#               value: "8081"
+#             - name: MANAGEMENT_TRACING_ENABLED
+#               value: "true"
+#             - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+#               value: "http://tempo:9411/api/v2/spans"
+
+#           readinessProbe:
+#             httpGet:
+#               path: /actuator/health/readiness
+#               port: 8081
+#             initialDelaySeconds: 60
+#             periodSeconds: 10
+#             # timeoutSeconds: 3
+#             # failureThreshold: 3
+#             # successThreshold: 1
+
+#           livenessProbe:
+#             httpGet:
+#               path: /actuator/health/liveness
+#               port: 8081
+#             initialDelaySeconds: 120
+#             periodSeconds: 20
+#             # timeoutSeconds: 5
+#             # failureThreshold: 5
+
+
+#           volumeMounts:
+#             - name: shared-uploads
+#               mountPath: /data/uploads
+
+#           resources:
+#             requests:
+#               memory: "500Mi"
+#             limits:
+#               memory: "700Mi"
+
+#       volumes:
+#         - name: shared-uploads
+#           hostPath:
+#             path: /var/data/job-uploads
+#             type: DirectoryOrCreate

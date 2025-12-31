@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  namespace: api-gateway
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: api-gateway
+  template:
+    metadata:
+      labels:
+        app: api-gateway
+    spec:
+      nodeSelector:
+        node-type: serviceapp
+      containers:
+        - name: api-gateway
+          image: boroleujval4/api-gateway:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8083
+          env:
+            - name: TZ
+              value: Asia/Kolkata
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Duser.timezone=Asia/Kolkata"
+            - name: DEBUG
+              value: "false"
+            # === Application Name ===
+            - name: SPRING_APPLICATION_NAME
+              value: "api-gateway"
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            initialDelaySeconds: 20
+            periodSeconds: 5
+---
+

@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-config
+  namespace: job-scheduler
+data:
+  POSTGRES_DB: "JobDB"
+  POSTGRES_USER: "root"
+  POSTGRES_PASSWORD: "root"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: job-scheduler
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: root
+
+
+# if password not work for authentication
+
+# kubectl create secret generic postgres-secret \
+#   -n job-scheduler \
+#   --from-literal=POSTGRES_PASSWORD=root

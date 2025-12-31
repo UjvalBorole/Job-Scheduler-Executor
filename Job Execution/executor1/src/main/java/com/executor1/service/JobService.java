@@ -3,15 +3,18 @@ package com.executor1.service;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 import org.apache.kafka.clients.admin.NewTopic;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.support.MessageBuilder;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import com.executor1.entities1.Job;
@@ -52,6 +55,11 @@ public class JobService {
     LocalDateTime time = LocalDateTime.now();
 
     private int executorid =1;
+
+
+    private final Executor jobExecutor;
+
+
 
     /* =========================================================
      * Kafka send helpers
@@ -160,6 +168,7 @@ public class JobService {
     /* =========================================================
      * Handle dependencies
      * ========================================================= */
+    @Async("jobExecutor")
     private void handleJobEvent(RedisJobWrapper event) {
         Job job = event.getJob();
         if (job == null) return;
@@ -278,6 +287,7 @@ public class JobService {
         System.out.println(event);
         log.info("▶️ Consumed from RunQueue job={}", event.getJob() != null ? event.getJob().getId() : null);
         handleJobEvent(event);
+//        jobExecutor.execute(() -> handleJobEvent(event));
     }
 
     @KafkaListener(topics = "${spring.kafka.topic.waitqueue}", containerFactory = "waitQueueKafkaListenerContainerFactory")
@@ -285,6 +295,7 @@ public class JobService {
         log.info("↪️ Consumed from WaitQueue job={}", event.getJob() != null ? event.getJob().getId() : null);
 //        this.executorid=exeId;
         handleJobEvent(event);
+//        jobExecutor.execute(() -> handleJobEvent(event));
     }
 
     @KafkaListener(topics = "${spring.kafka.topic.retryqueue}", containerFactory = "retryQueueKafkaListenerContainerFactory")
@@ -292,6 +303,7 @@ public class JobService {
 //        this.executorid=exeId;
         log.info("♻️ Consumed from RetryQueue job={}", event.getJob() != null ? event.getJob().getId() : null);
         handleJobEvent(event);
+//        jobExecutor.execute(() -> handleJobEvent(event));
     }
 }
 

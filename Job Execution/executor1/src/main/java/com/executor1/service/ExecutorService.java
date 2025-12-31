@@ -97,7 +97,15 @@ public class ExecutorService {
                 continue;
             }
 
-            int attempts = pay.getAttemptNumber();
+            int attempts = (pay.getAttemptNumber() == null)?0: pay.getAttemptNumber();
+            if(pay.getPath() != null && pay.getAttemptNumber() == null) {
+                attempts = 1;
+                log.warn("▶️ Payload '{}' (JobId={})  attempnumber set to {} from {} ",
+                        pay.getName(), pay.getJobId(), attempts,pay.getAttemptNumber());
+            }
+            else if(pay.getPath() != null && pay.getAttemptNumber() == 0)attempts = 1;
+            if(attempts == 0)log.warn("▶️ Payload '{}' (JobId={}) execution Skipped because of attempnumber is {}  for execution attempts greater than 1 needed",
+                    pay.getName(), pay.getJobId(), attempts);
             Payload result = pay;
 
             // Mark start time

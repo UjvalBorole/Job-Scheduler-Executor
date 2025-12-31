@@ -65,6 +65,11 @@ public class JenkinsfileExecutor {
     // Public method to execute Payload
     // ============================
     public Payload execute(Payload payload) {
+        // 🔥 RESET state for fresh execution attempt
+        payload.setErrorMsg(null);
+        payload.setStatus(RunStatus.RUNNING);
+        payload.setEndTime(null);
+
         String jenkinsfilePath = payload.getPath();
         String jobName = payload.getName();
         String jobId = String.valueOf(payload.getJobId());
@@ -113,7 +118,10 @@ public class JenkinsfileExecutor {
             payload.setModifiedTime(LocalDateTime.now());
             try { logToFile("Execution failed with exception: " + e.getMessage(), logFile); } catch (IOException ignored) {}
         }
-    System.out.println("Jenkins file Executor "+payload);
+        System.out.println("Jenkins file Executor "+payload);
+        payload.setEndTime(LocalDateTime.now());
+        payload.setModifiedTime(LocalDateTime.now());
+
         return payload;
     }
 
@@ -186,10 +194,21 @@ public class JenkinsfileExecutor {
                 int attemptNumber = payload.getAttemptNumber();
                 String errorOutput = runCommand(stageName, cmd, logFile, attemptNumber);
 
+//                if (errorOutput != null) {
+//                    payload.setErrorMsg("Stage: " + stageName + "\nStep: " + cwl.originalLine +
+//                            "\nAttempt " + attemptNumber + " - " + errorOutput.trim());
+//                    logError(payload.getErrorMsg(), logFile);
+//                    return false;
+//                }
                 if (errorOutput != null) {
-                    payload.setErrorMsg("Stage: " + stageName + "\nStep: " + cwl.originalLine +
-                            "\nAttempt " + attemptNumber + " - " + errorOutput.trim());
-                    logError(payload.getErrorMsg(), logFile);
+                    String errorMsg =
+                            "Stage: " + stageName +
+                                    "\nStep: " + cwl.originalLine +
+                                    "\nAttempt " + attemptNumber +
+                                    "\n" + errorOutput;
+
+                    payload.setErrorMsg(errorMsg);
+                    logError(errorMsg, logFile);
                     return false;
                 }
                 stageNum++;
@@ -322,50 +341,87 @@ public class JenkinsfileExecutor {
     // ============================
     // Run command with attempt tracking
     // ============================
+//    private String runCommand(String stageName, String command, String logFile, int attemptNumber)
+//            throws IOException, InterruptedException {
+//        logToFile("[" + LocalDateTime.now() + "] Running command (Attempt " + attemptNumber + "): " + command, logFile);
+//
+//        ProcessBuilder builder = new ProcessBuilder();
+//        String os = System.getProperty("os.name").toLowerCase();
+//        boolean isWindows = os.contains("win");
+//
+//        String[] parts = command.split("\\s+", 2);
+//        String executable = parts[0];
+//        String args = parts.length > 1 ? parts[1] : "";
+//        String interpreter = envMap.getOrDefault(executable.toUpperCase(), executable);
+//
+//        if (isWindows) {
+//            if (interpreter.equalsIgnoreCase("powershell"))
+//                builder.command("powershell.exe", "-Command", args);
+//            else if (interpreter.equalsIgnoreCase("cmd"))
+//                builder.command("cmd.exe", "/c", args);
+//            else builder.command(interpreter, args);
+//        } else {
+//            if (interpreter.equalsIgnoreCase("bash") || interpreter.equalsIgnoreCase("sh"))
+//                builder.command(interpreter, "-c", args);
+//            else builder.command(interpreter, args);
+//        }
+//
+//        builder.redirectErrorStream(true);
+//        Process process = builder.start();
+//
+//        StringBuilder errorOutput = new StringBuilder();
+//        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+//            String line;
+//            while ((line = reader.readLine()) != null) {
+//                logToFile("[" + LocalDateTime.now() + "] " + line, logFile);
+//                if (line.toLowerCase().contains("error")
+//                        || line.toLowerCase().contains("exception")
+//                        || line.toLowerCase().contains("traceback")) {
+//                    errorOutput.append(line).append("\n");
+//                }
+//            }
+//        }
+//
+//        int exitCode = process.waitFor();
+//        logStageEnd(stageName, exitCode, logFile);
+//        return exitCode == 0 ? null : errorOutput.toString().trim();
+//    }
     private String runCommand(String stageName, String command, String logFile, int attemptNumber)
             throws IOException, InterruptedException {
-        logToFile("[" + LocalDateTime.now() + "] Running command (Attempt " + attemptNumber + "): " + command, logFile);
+
+        logToFile("[" + LocalDateTime.now() + "] Running command (Attempt "
+                + attemptNumber + "): " + command, logFile);
 
         ProcessBuilder builder = new ProcessBuilder();
         String os = System.getProperty("os.name").toLowerCase();
         boolean isWindows = os.contains("win");
 
-        String[] parts = command.split("\\s+", 2);
-        String executable = parts[0];
-        String args = parts.length > 1 ? parts[1] : "";
-        String interpreter = envMap.getOrDefault(executable.toUpperCase(), executable);
-
+        // ✅ Jenkins-equivalent execution
         if (isWindows) {
-            if (interpreter.equalsIgnoreCase("powershell"))
-                builder.command("powershell.exe", "-Command", args);
-            else if (interpreter.equalsIgnoreCase("cmd"))
-                builder.command("cmd.exe", "/c", args);
-            else builder.command(interpreter, args);
+            builder.command("cmd.exe", "/c", command);
         } else {
-            if (interpreter.equalsIgnoreCase("bash") || interpreter.equalsIgnoreCase("sh"))
-                builder.command(interpreter, "-c", args);
-            else builder.command(interpreter, args);
+            builder.command("bash", "-c", command);
         }
 
         builder.redirectErrorStream(true);
         Process process = builder.start();
 
-        StringBuilder errorOutput = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+        StringBuilder fullOutput = new StringBuilder();
+
+        try (BufferedReader reader =
+                     new BufferedReader(new InputStreamReader(process.getInputStream()))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 logToFile("[" + LocalDateTime.now() + "] " + line, logFile);
-                if (line.toLowerCase().contains("error")
-                        || line.toLowerCase().contains("exception")
-                        || line.toLowerCase().contains("traceback")) {
-                    errorOutput.append(line).append("\n");
-                }
+                fullOutput.append(line).append("\n");
             }
         }
 
         int exitCode = process.waitFor();
         logStageEnd(stageName, exitCode, logFile);
-        return exitCode == 0 ? null : errorOutput.toString().trim();
+
+        // ✅ ONLY exit code decides success/failure
+        return exitCode == 0 ? null : fullOutput.toString().trim();
     }
 
     // ============================
@@ -410,7 +466,7 @@ public class JenkinsfileExecutor {
                     .executorId("executor-1")
                     .attemptNumber(1)
                     .errorMsg(null)
-                    .path("D:/lap/java/dsa/jenkins")
+                    .path("D:/lap/java/dsa/path/to/job-shedularparts/jenkins")
                     .build();
 
             Payload result = executor.execute(payload1);

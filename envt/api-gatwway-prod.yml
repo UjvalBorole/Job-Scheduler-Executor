@@ -1,0 +1,106 @@
+#  http://localhost:8091/actuator/gateway/routes #--check this uri to see the all endpoints
+#  http://localhost:8091/actuator/circuitbreaker #--check this uri to see the detail about the circuit breaker status some thing
+spring:
+  cloud:
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: JobConsumerSvc
+              uri: lb://JOBCONSUMERSVC
+              predicates:
+                - Path=/api/deptracker/**,/jobs/jobsvc/**,/jobruns/**,/payloads/jobsvc/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"   # Rate limiting based on client IP
+                    redis-rate-limiter.replenishRate: 5  # Requests per second
+                    redis-rate-limiter.burstCapacity: 10 # Max burst capacity
+                - name: Retry
+                  args:
+                    retries: 3                  # Number of retry attempts
+                    statuses: BAD_GATEWAY, GATEWAY_TIMEOUT, INTERNAL_SERVER_ERROR
+                    methods: GET, POST          # Only retry for these HTTP methods
+                    backoff:
+                      firstBackoff: 500ms       # Initial wait before retry
+                      maxBackoff: 5s            # Max wait between retries
+                      factor: 2                 # Exponential backoff multiplier
+                      basedOnPreviousValue: true
+                - name: CircuitBreaker
+                  args:
+                    name: jobConsumerCircuitBreaker
+                    fallbackUri: forward:/fallback/jobconsumer
+
+            - id: JobService
+              uri: lb://JOBSERVICE
+              predicates:
+                - Path=/cancel/**,/jobs/**,/payloads/**
+
+              filters:
+                - name: CircuitBreaker
+                  args:
+                    name: jobServiceCircuitBreaker
+                    fallbackUri: forward:/fallback/jobservice
+
+            - id: test
+              uri: https://httpbin.org
+              predicates:
+                - Path=/test/**
+              filters:
+                - name: RequestRateLimiter
+                  args:
+                    key-resolver: "#{@ipKeyResolver}"
+                    redis-rate-limiter.replenishRate: 3
+                    redis-rate-limiter.burstCapacity: 5
+                - name: Retry
+                  args:
+                    retries: 2
+                    statuses: BAD_GATEWAY, GATEWAY_TIMEOUT
+                    methods: GET
+                - name: CircuitBreaker
+                  args:
+                    name: testCircuitBreaker
+                    fallbackUri: forward:/fallback/test
+
+          discovery: # that is used to import directly all services from service discovery not does any configuration
+            locator:
+              enabled: false
+              lower-case-service-id: true
+          httpclient: #--Global Timeout Config
+            response-timeout: 7s #-After the connection is established, Gateway will wait at most 5 seconds for the full HTTP response
+            connect-timeout: 5000 #Gateway will wait at most 2 second while trying to establish a TCP connection to the downstream service
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+  endpoint:
+    gateway:
+      access: unrestricted
+    health:
+      show-details: always
+
+  info:
+    env:
+      enabled: true
+
+#Circuit-Breaker Config
+resilience4j:
+  circuitbreaker:
+    instances:
+      jobConsumerCircuitBreaker:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+      jobServiceCircuitBreaker:
+        register-health-indicator: true
+        sliding-window-size: 10
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+      testCircuitBreaker:
+        register-health-indicator: true
+        sliding-window-size: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 5s

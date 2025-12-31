@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-manual-executor
+  namespace: job-scheduler
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: job-manual-executor
+  template:
+    metadata:
+      labels:
+        app: job-manual-executor
+    spec:
+      containers:
+        - name: job-manual-executor
+          image: boroleujval4/job-manualexecutor:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8083
+          envFrom:
+            - configMapRef:
+                name: job-executor-config
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8083
+            initialDelaySeconds: 60
+            periodSeconds: 10
+          volumes:
+            - name: shared-uploads
+              hostPath:
+                path: /var/data/job-uploads
+                type: DirectoryOrCreate  # The path your app uses to save files no pvc used only hostpath 
+      volumeMounts:
+        - name: shared-uploads
+          mountPath: /data/uploads

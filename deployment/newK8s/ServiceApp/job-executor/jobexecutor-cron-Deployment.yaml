@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-cron-executor
+  namespace: job-scheduler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: job-cron-executor
+  template:
+    metadata:
+      labels:
+        app: job-cron-executor
+    spec:
+      nodeSelector:
+        node-type: serviceapp
+      containers:
+        - name: job-cron-executor
+          image: boroleujval4/job-cronexecutor:1.0.0
+          imagePullPolicy: Always
+
+          ports:
+            - containerPort: 8084   # ✅ match Docker
+
+          env:
+            # ===== Timezone (IMPORTANT – long-term stability) =====
+            - name: TZ
+              value: Asia/Kolkata
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Duser.timezone=Asia/Kolkata"
+
+            # ===== Spring Core =====
+            - name: SPRING_APPLICATION_NAME
+              value: cronexecutor
+            - name: SERVER_PORT
+              value: "8084"
+            - name: SPRING_PROFILES_ACTIVE
+              value: eureka
+            - name: DEBUG
+              value: "true"
+
+            # ===== Kafka =====
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: kafka:9092
+
+            # ===== Redis =====
+            - name: REDIS_HOST
+              value: redis
+            - name: REDIS_PORT
+              value: "6379"
+
+            # ===== WebClient =====
+            - name: WEBCLIENT_BASE_URL
+              value: http://CONSUMER
+
+            # ===== Tracing =====
+            - name: MANAGEMENT_TRACING_ENABLED
+              value: "true"
+            - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+              value: http://tempo:9411/api/v2/spans
+
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8084
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8084
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+
+          volumeMounts:
+            - name: shared-uploads
+              mountPath: /data/uploads
+
+      volumes:
+        - name: shared-uploads
+          hostPath:
+            path: /var/data/job-uploads
+            type: DirectoryOrCreate

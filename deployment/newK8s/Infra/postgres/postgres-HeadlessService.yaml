@@ -1,0 +1,21 @@
+# Headless Service (required for StatefulSet DNS)
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: job-scheduler
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - name: db
+      port: 5432
+      targetPort: 5432
+
+
+
+# This provides stable DNS like:
+
+# postgres-0.postgres-headless.job-scheduler.svc.cluster.local
+# postgres-1.postgres-headless.job-scheduler.svc.cluster.local

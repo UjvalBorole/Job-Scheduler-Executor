@@ -1,0 +1,640 @@
+Here’s a **compact, practical Kubernetes logging cheat sheet**, tailored for your setup (Infra + ServiceApp, namespace-based, multiple microservices).
+
+You can **copy–paste this** and keep it handy 👇
+
+---
+
+# 🧾 Kubernetes Logging Cheat Sheet
+
+> Assumes namespace: `job-scheduler`
+
+```bash
+NS=job-scheduler
+```
+
+---
+
+## 🔹 1. Basic Pod Logs
+
+### Logs of a single pod
+
+```bash
+kubectl logs <pod-name> -n $NS
+```
+
+### Follow logs (like `tail -f`)
+
+```bash
+kubectl logs -f <pod-name> -n $NS
+```
+
+### Last N lines
+
+```bash
+kubectl logs <pod-name> -n $NS --tail=100
+```
+
+---
+
+## 🔹 2. Logs by Deployment (Most Used)
+
+### Logs from all pods of a deployment
+
+```bash
+kubectl logs deployment/<deployment-name> -n $NS
+```
+
+### Follow deployment logs
+
+```bash
+kubectl logs deployment/<deployment-name> -n $NS -f
+```
+
+### Limit log lines
+
+```bash
+kubectl logs deployment/<deployment-name> -n $NS --tail=200
+```
+
+---
+
+## 🔹 3. Logs by Label (Best for Microservices)
+
+### Logs for pods with label
+
+```bash
+kubectl logs -l app=job-service -n $NS
+```
+
+### Follow logs with label
+
+```bash
+kubectl logs -l app=job-consumer -n $NS -f
+```
+
+---
+
+## 🔹 4. Multi-Container Pod Logs
+
+### List containers in a pod
+
+```bash
+kubectl get pod <pod-name> -n $NS -o jsonpath='{.spec.containers[*].name}'
+```
+
+### Logs from a specific container
+
+```bash
+kubectl logs <pod-name> -c <container-name> -n $NS
+```
+
+---
+
+## 🔹 5. Previous / Crashed Pod Logs 🚨
+
+### Logs from previous container instance
+
+```bash
+kubectl logs <pod-name> -n $NS --previous
+```
+
+### Very useful after crash / restart
+
+```bash
+kubectl logs deployment/job-consumer -n $NS --previous
+```
+
+---
+
+## 🔹 6. Real-Time Debugging
+
+### Stream logs + timestamps
+
+```bash
+kubectl logs -f <pod-name> -n $NS --timestamps
+```
+
+### Stream logs from all pods of a deployment
+
+```bash
+kubectl logs -f deployment/job-service -n $NS --all-containers=true
+```
+
+---
+
+## 🔹 7. Infra Services Logs
+
+### Kafka
+
+```bash
+kubectl logs -l app=kafka -n $NS
+```
+
+### MongoDB
+
+```bash
+kubectl logs -l app=mongodb -n $NS
+```
+
+### Postgres
+
+```bash
+kubectl logs -l app=postgres -n $NS
+```
+
+### Redis
+
+```bash
+kubectl logs -l app=redis -n $NS
+```
+
+---
+
+## 🔹 8. ServiceApp Logs (Quick Access)
+
+### Config Server
+
+```bash
+kubectl logs deployment/config-server -n $NS
+```
+
+### Service Discovery
+
+```bash
+kubectl logs deployment/service-discovery -n $NS
+```
+
+### API Gateway
+
+```bash
+kubectl logs deployment/api-gateway -n $NS -f
+```
+
+### Job Scheduler
+
+```bash
+kubectl logs deployment/job-scheduler -n $NS
+```
+
+### Job Service
+
+```bash
+kubectl logs deployment/job-service -n $NS -f
+```
+
+### Job Consumer
+
+```bash
+kubectl logs deployment/job-consumer -n $NS -f
+```
+
+### Job Executor (Cron)
+
+```bash
+kubectl logs deployment/jobexecutor-cron -n $NS
+```
+
+### Job Executor (Manual)
+
+```bash
+kubectl logs deployment/jobexecutor-manual -n $NS
+```
+
+---
+
+## 🔹 9. Grep / Filter Logs 🔍
+
+### Filter keyword
+
+```bash
+kubectl logs deployment/job-service -n $NS | grep ERROR
+```
+
+### Case-insensitive
+
+```bash
+kubectl logs deployment/job-service -n $NS | grep -i exception
+```
+
+---
+
+## 🔹 10. Save Logs to File 📁
+
+### Save pod logs
+
+```bash
+kubectl logs <pod-name> -n $NS > pod.log
+```
+
+### Save deployment logs
+
+```bash
+kubectl logs deployment/job-consumer -n $NS > job-consumer.log
+```
+
+---
+
+## 🔹 11. Describe + Logs (Debug Combo)
+
+```bash
+kubectl describe pod <pod-name> -n $NS
+kubectl logs <pod-name> -n $NS
+```
+
+---
+
+## 🔹 12. Most Useful One-Liners ⭐
+
+```bash
+# See crashing pods
+kubectl get pods -n $NS | grep CrashLoopBackOff
+
+# Logs of newest pod
+kubectl logs $(kubectl get pods -n $NS --sort-by=.metadata.creationTimestamp | tail -1 | awk '{print $1}') -n $NS
+
+# Follow logs of everything (careful!)
+kubectl logs -n $NS --all-containers=true -f -l app
+```
+
+---
+
+## 🧠 Pro Tips
+
+* Always **check labels**: `kubectl get pods --show-labels -n $NS`
+* Use `--previous` after crashes
+* Prefer **deployment logs** over pod logs in production
+* For Kafka/DBs, logs often show **connection issues first**
+
+---
+  
+  ========================================================================================================================================
+
+
+
+---
+
+# 🧰 Kubernetes Debugging + Exec Cheat Sheet
+
+```bash
+NS=job-scheduler
+```
+
+---
+
+## 🐞 1. Core Debugging Commands (FIRST THINGS TO RUN)
+
+### Check pod status
+
+```bash
+kubectl get pods -n $NS -o wide
+```
+
+### Find failing pods fast
+
+```bash
+kubectl get pods -n $NS | egrep "CrashLoopBackOff|Error|Pending"
+```
+
+### Describe pod (events + reasons)
+
+```bash
+kubectl describe pod <pod-name> -n $NS
+```
+
+### Check recent events (sorted)
+
+```bash
+kubectl get events -n $NS --sort-by=.lastTimestamp
+```
+
+---
+
+## 🔑 2. kubectl exec Cheat Sheet
+
+### Exec into a pod (bash)
+
+```bash
+kubectl exec -it <pod-name> -n $NS -- /bin/bash
+```
+
+### If bash not available
+
+```bash
+kubectl exec -it <pod-name> -n $NS -- /bin/sh
+```
+
+### Exec into a deployment
+
+```bash
+kubectl exec -it deployment/job-service -n $NS -- /bin/bash
+```
+
+### Exec into specific container
+
+```bash
+kubectl exec -it <pod-name> -c <container-name> -n $NS -- /bin/bash
+```
+
+---
+
+## 🧪 3. In-Pod Debugging Essentials
+
+### Environment variables
+
+```bash
+printenv
+```
+
+### DNS check
+
+```bash
+nslookup kafka
+nslookup postgres
+nslookup mongo
+```
+
+### Connectivity test
+
+```bash
+curl http://api-gateway:8080/actuator/health
+```
+
+### Check open ports
+
+```bash
+netstat -tulpn
+```
+
+---
+
+## 🧵 4. Kafka Deep Debugging 🔥
+
+### Kafka pod logs
+
+```bash
+kubectl logs -l app=kafka -n $NS
+```
+
+### Follow Kafka logs
+
+```bash
+kubectl logs -f deployment/kafka -n $NS
+```
+
+### Exec into Kafka pod
+
+```bash
+kubectl exec -it kafka-0 -n $NS -- /bin/bash
+```
+
+### Check Kafka broker status
+
+```bash
+ps aux | grep kafka
+```
+
+### List topics
+
+```bash
+kafka-topics.sh --bootstrap-server localhost:9092 --list
+```
+
+### Describe topic
+
+```bash
+kafka-topics.sh --bootstrap-server localhost:9092 --describe --topic <topic>
+```
+
+### Consume messages
+
+```bash
+kafka-console-consumer.sh \
+  --bootstrap-server localhost:9092 \
+  --topic <topic> \
+  --from-beginning
+```
+
+### Produce test message
+
+```bash
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic <topic>
+```
+
+🚨 **Common Kafka Errors**
+
+| Error                   | Meaning                 |
+| ----------------------- | ----------------------- |
+| `LEADER_NOT_AVAILABLE`  | Broker not ready        |
+| `Connection refused`    | Service / port mismatch |
+| `NotLeaderForPartition` | Broker restart needed   |
+
+---
+
+## 🍃 5. MongoDB Deep Debugging
+
+### Mongo pod logs
+
+```bash
+kubectl logs -l app=mongodb -n $NS
+```
+
+### Exec into Mongo pod
+
+```bash
+kubectl exec -it mongo-0 -n $NS -- /bin/bash
+```
+
+### Connect to Mongo shell
+
+```bash
+mongosh
+```
+
+### Check databases
+
+```js
+show dbs
+```
+
+### Check collections
+
+```js
+use jobdb
+show collections
+```
+
+### Find slow queries
+
+```js
+db.currentOp()
+```
+
+### Check replica status (if enabled)
+
+```js
+rs.status()
+```
+
+🚨 **Common Mongo Issues**
+
+| Symptom            | Cause                |
+| ------------------ | -------------------- |
+| Connection timeout | Service name wrong   |
+| `Unauthorized`     | Wrong credentials    |
+| CrashLoop          | PVC permission issue |
+
+---
+
+## 🐘 6. Postgres Deep Debugging
+
+### Postgres logs
+
+```bash
+kubectl logs -l app=postgres -n $NS
+```
+
+### Exec into Postgres pod
+
+```bash
+kubectl exec -it postgres-0 -n $NS -- /bin/bash
+```
+
+### Connect to Postgres
+
+```bash
+psql -U postgres
+```
+
+### List databases
+
+```sql
+\l
+```
+
+### Switch DB
+
+```sql
+\c jobdb
+```
+
+### List tables
+
+```sql
+\dt
+```
+
+### Active connections
+
+```sql
+SELECT pid, usename, state, query FROM pg_stat_activity;
+```
+
+### Lock issues
+
+```sql
+SELECT * FROM pg_locks;
+```
+
+🚨 **Common Postgres Errors**
+
+| Error                            | Fix                      |
+| -------------------------------- | ------------------------ |
+| `password authentication failed` | Secret mismatch          |
+| `too many connections`           | Increase max_connections |
+| CrashLoop                        | Volume permission issue  |
+
+---
+
+## 🧊 7. Redis Quick Debug
+
+### Redis logs
+
+```bash
+kubectl logs -l app=redis -n $NS
+```
+
+### Exec into Redis pod
+
+```bash
+kubectl exec -it redis-0 -n $NS -- redis-cli
+```
+
+### Ping Redis
+
+```bash
+PING
+```
+
+### Check keys
+
+```bash
+KEYS *
+```
+
+---
+
+## 🔍 8. Network & DNS Debugging
+
+### DNS resolution inside cluster
+
+```bash
+kubectl run dns-test --rm -it \
+  --image=busybox \
+  -n $NS -- nslookup kafka
+```
+
+### Service endpoints
+
+```bash
+kubectl get endpoints -n $NS
+```
+
+---
+
+## 🚑 9. Emergency Debug Patterns
+
+### Pod stuck in Pending
+
+```bash
+kubectl describe pod <pod> -n $NS
+```
+
+### PVC issues
+
+```bash
+kubectl get pvc -n $NS
+kubectl describe pvc <pvc-name> -n $NS
+```
+
+### Node issues
+
+```bash
+kubectl get nodes
+kubectl describe node <node>
+```
+
+---
+
+## ⭐ 10. Golden Debug Workflow
+
+```bash
+kubectl get pods -n $NS
+kubectl describe pod <pod>
+kubectl logs <pod>
+kubectl logs <pod> --previous
+kubectl exec -it <pod> -- /bin/bash
+```
+
+---
+
+## 🧠 Pro Production Tips
+
+✔ Always check **events first**
+✔ Use **--previous** for crash debugging
+✔ DB issues → logs + exec + PVC
+✔ Kafka issues → broker logs + topic state
+✔ Never debug blind—**describe → logs → exec**
+
+---
+
+

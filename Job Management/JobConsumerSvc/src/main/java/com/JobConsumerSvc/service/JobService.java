@@ -140,7 +140,6 @@ public class JobService {
             error = "Job ID " + jobId + " not Processed Further";
 
             dto.setStatus(TaskStatus.CANCELLED);
-
         }
 
 
@@ -225,7 +224,7 @@ public class JobService {
 
                 // ✅ Remove JobRun from Redis cache
                 jobRunCacheService.delete(jobId);
-                jobRunRepository.deleteByJobId(jobId);
+//                jobRunRepository.deleteByJobId(jobId);
 
                 jobRepository.deleteById(jobId);
                 LOGGER.info("✅ Job {} and its runs deleted", jobId);

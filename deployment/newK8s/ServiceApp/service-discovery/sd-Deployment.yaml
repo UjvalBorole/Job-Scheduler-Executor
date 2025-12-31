@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-service
+  namespace: job-scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: discovery-service
+  template:
+    metadata:
+      labels:
+        app: discovery-service
+    spec:
+      containers:
+      - name: discovery-service
+        image: boroleujval4/job-servicediscovery:1.0.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8090
+        env:
+        - name: TZ
+          value: Asia/Kolkata
+        - name: JAVA_TOOL_OPTIONS
+          value: "-Duser.timezone=Asia/Kolkata"
+        - name: SPRING_APPLICATION_NAME
+          value: "discovery-service"
+        - name: DEBUG
+          value: "false"
+        - name: SERVER_PORT
+          value: "8090"
+        - name: EUREKA_CLIENT_REGISTER_WITH_EUREKA
+          value: "false"
+        - name: EUREKA_CLIENT_FETCH_REGISTRY
+          value: "false"
+        - name: EUREKA_INSTANCE_HOSTNAME
+          value: "discovery-service"
+        - name: EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE
+          value: "http://discovery-service:8090/eureka/"
+        - name: MANAGEMENT_TRACING_ENABLED
+          value: "true"
+        - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+          value: "http://tempo:9411/api/v2/spans"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8090
+          initialDelaySeconds: 30
+          periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery-service
+  namespace: job-scheduler
+spec:
+  selector:
+    app: discovery-service
+  ports:
+    - protocol: TCP
+      port: 8090
+      targetPort: 8090
+      nodePort: 31090
+  type: NodePort

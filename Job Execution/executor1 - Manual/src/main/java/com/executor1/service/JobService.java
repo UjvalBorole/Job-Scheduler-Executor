@@ -1,8 +1,10 @@
 package com.executor1.service;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.Executor;
 
 import org.apache.kafka.clients.admin.NewTopic;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.KafkaHeaders;
@@ -42,7 +44,8 @@ public class JobService {
 
     LocalDateTime time = LocalDateTime.now();
 
-
+    @Autowired
+    private Executor jobExecutor;
 
     /* =========================================================
      * Kafka send helpers
@@ -113,8 +116,17 @@ public class JobService {
          * Unified Job Runner
          * ========================================================= */
 //        System.out.println(job);
-        ExecutionResult result = execute(job);
-        saveJobRun(job, result.getStatus(), result.getErrorMessage());
+//        ExecutionResult result = execute(job);
+//        saveJobRun(job, result.getStatus(), result.getErrorMessage());
+        //used for Kafka thread returns immediately
+        //poll() continues
+        //No rebalances
+        //System stabilizes
+
+        jobExecutor.execute(() -> {
+            ExecutionResult result = execute(job);
+            saveJobRun(job, result.getStatus(), result.getErrorMessage());
+        });
     }
 }
 

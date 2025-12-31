@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-consumer
+  namespace: job-scheduler
+spec:
+  type: ClusterIP
+  selector:
+    app: job-consumer
+  ports:
+    - port: 8082
+      targetPort: 8082

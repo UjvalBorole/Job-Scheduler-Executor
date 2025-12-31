@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-consumer
+  namespace: job-scheduler
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: job-consumer
+  template:
+    metadata:
+      labels:
+        app: job-consumer
+    spec:
+      containers:
+        - name: job-consumer
+          image: boroleujval4/job-consumersvc:1.0.0
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8082
+          env:
+            - name: TZ
+              value: Asia/Kolkata
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Duser.timezone=Asia/Kolkata"
+            - name: DEBUG
+              value: "false"
+            - name: SPRING_APPLICATION_NAME
+              value: "consumer"
+            # === Kafka ===
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+
+            # === Postgres ===
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://postgres:5432/JobDB"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: "root"
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: "root"
+
+            # === MongoDB ===
+            - name: SPRING_DATA_MONGODB_HOST
+              value: "mongodb"
+            - name: SPRING_DATA_MONGODB_USERNAME
+              value: "admin"
+            - name: SPRING_DATA_MONGODB_PASSWORD
+              value: "admin123"
+
+            # === Redis ===
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+
+            # === Service Config ===
+            - name: SERVER_PORT
+              value: "8082"
+            - name: SPRING_PROFILES_ACTIVE
+              value: "eureka"
+            - name: MANAGEMENT_TRACING_ENABLED
+              value: "true"
+            - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+              value: "http://tempo:9411/api/v2/spans"
+
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8082
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5

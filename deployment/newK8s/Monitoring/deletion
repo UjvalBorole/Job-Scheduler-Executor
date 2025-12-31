@@ -1,0 +1,266 @@
+Perfect 👍
+Here’s a **clean, practical Kubernetes DELETION CHEAT SHEET** you can keep and use daily.
+
+---
+
+# 🧹 Kubernetes Deletion Cheat Sheet
+
+---
+
+## 🔹 1. Delete PODS
+
+### Delete a single Pod
+
+```bash
+kubectl delete pod <pod-name> -n <namespace>
+```
+
+### Delete all Pods in a namespace
+
+```bash
+kubectl delete pods --all -n <namespace>
+```
+
+### Force delete a stuck Pod
+
+```bash
+kubectl delete pod <pod-name> -n <namespace> --grace-period=0 --force
+```
+
+---
+
+## 🔹 2. Delete DEPLOYMENTS
+
+### Delete a Deployment
+
+```bash
+kubectl delete deployment <deployment-name> -n <namespace>
+```
+
+### Delete all Deployments in a namespace
+
+```bash
+kubectl delete deployments --all -n <namespace>
+```
+
+---
+
+## 🔹 3. Delete STATEFULSETS
+
+```bash
+kubectl delete statefulset <statefulset-name> -n <namespace>
+```
+
+⚠️ **PVCs are NOT deleted automatically**
+
+---
+
+## 🔹 4. Delete SERVICES
+
+### Delete Service
+
+```bash
+kubectl delete service <service-name> -n <namespace>
+```
+
+### Delete all Services
+
+```bash
+kubectl delete services --all -n <namespace>
+```
+
+---
+
+## 🔹 5. Delete CONFIGMAPS
+
+```bash
+kubectl delete configmap <configmap-name> -n <namespace>
+```
+
+Delete all:
+
+```bash
+kubectl delete configmaps --all -n <namespace>
+```
+
+---
+
+## 🔹 6. Delete SECRETS
+
+```bash
+kubectl delete secret <secret-name> -n <namespace>
+```
+
+Delete all (⚠️ careful):
+
+```bash
+kubectl delete secrets --all -n <namespace>
+```
+
+---
+
+## 🔹 7. Delete PVC / PV
+
+### Delete PVC
+
+```bash
+kubectl delete pvc <pvc-name> -n <namespace>
+```
+
+### Delete PV
+
+```bash
+kubectl delete pv <pv-name>
+```
+
+Check reclaim policy before deleting PV:
+
+```bash
+kubectl get pv
+```
+
+---
+
+## 🔹 8. Delete JOBS & CRONJOBS
+
+### Delete Job
+
+```bash
+kubectl delete job <job-name> -n <namespace>
+```
+
+### Delete CronJob
+
+```bash
+kubectl delete cronjob <cronjob-name> -n <namespace>
+```
+
+---
+
+## 🔹 9. Delete DAEMONSETS
+
+```bash
+kubectl delete daemonset <daemonset-name> -n <namespace>
+```
+
+---
+
+## 🔹 10. Delete HPA (Horizontal Pod Autoscaler)
+
+```bash
+kubectl delete hpa <hpa-name> -n <namespace>
+```
+
+---
+
+## 🔹 11. Delete INGRESS
+
+```bash
+kubectl delete ingress <ingress-name> -n <namespace>
+```
+
+---
+
+## 🔹 12. Delete NAMESPACE (🔥 DANGEROUS)
+
+```bash
+kubectl delete namespace <namespace>
+```
+
+💥 Deletes EVERYTHING inside:
+
+* Pods
+* Services
+* PVCs
+* ConfigMaps
+* Secrets
+
+---
+
+## 🔹 13. Delete by LABEL (VERY POWERFUL)
+
+Delete all resources with label:
+
+```bash
+kubectl delete all -l app=job-service -n job-scheduler
+```
+
+---
+
+## 🔹 14. Delete EVERYTHING in a Namespace (⚠️)
+
+```bash
+kubectl delete all --all -n <namespace>
+```
+
+Does NOT delete:
+
+* PVCs
+* ConfigMaps
+* Secrets
+
+To wipe namespace fully:
+
+```bash
+kubectl delete namespace <namespace>
+```
+
+---
+
+## 🔹 15. Troubleshooting Deletions
+
+### Pod stuck in `Terminating`
+
+```bash
+kubectl get pod <pod-name> -n <ns> -o yaml
+```
+
+Remove finalizers:
+
+```bash
+kubectl patch pod <pod-name> -n <ns> -p '{"metadata":{"finalizers":null}}'
+```
+
+---
+
+## 🔹 16. Cleanup CrashLoop / Image Errors
+
+```bash
+kubectl delete pod <pod-name> -n <namespace>
+```
+
+Kubernetes will recreate it (Deployment/StatefulSet)
+
+---
+
+## 🧠 Golden Rules
+
+| Action             | Result                 |
+| ------------------ | ---------------------- |
+| Delete Pod         | Recreated (if managed) |
+| Delete Deployment  | Pods gone              |
+| Delete StatefulSet | Pods gone, PVC stays   |
+| Delete Namespace   | Everything gone        |
+
+---
+
+## 📌 Daily Use Shortlist (MEMORIZE)
+
+```bash
+kubectl delete pod <pod> -n <ns>
+kubectl delete deploy <name> -n <ns>
+kubectl delete svc <name> -n <ns>
+kubectl delete pvc <name> -n <ns>
+kubectl delete ns <ns>
+```
+
+---
+
+If you want next:
+
+* 🔥 **Emergency cleanup script**
+* 📊 **Logging & troubleshooting cheat sheet**
+* 🚀 **Production-safe deletion checklist**
+* 🧠 **Which delete recreates what (diagram)**
+
+Just tell me 👍

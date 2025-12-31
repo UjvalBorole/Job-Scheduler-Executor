@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-cron-executor
+  namespace: job-scheduler
+spec:
+  type: ClusterIP
+  selector:
+    app: job-cron-executor
+  ports:
+    - port: 8083
+      targetPort: 8083
