@@ -1,0 +1,111 @@
+{{- $prom := .Values.observability.prometheus }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $prom.name }}
+  namespace: {{ .Values.namespaces.observability }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $prom.name }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "services", "endpoints", "namespaces"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $prom.name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $prom.name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $prom.name }}
+    namespace: {{ .Values.namespaces.observability }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $prom.name }}-config
+  namespace: {{ .Values.namespaces.observability }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+    scrape_configs:
+      - job_name: prometheus
+        static_configs:
+          - targets: ["localhost:{{ $prom.port }}"]
+      - job_name: spring-services
+        metrics_path: /actuator/prometheus
+        kubernetes_sd_configs:
+          - role: pod
+            namespaces:
+              names:
+                - {{ .Values.namespaces.app }}
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_pod_container_port_name]
+            action: keep
+            regex: http
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $prom.name }}
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    app: {{ $prom.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $prom.name }}
+  ports:
+    - name: http
+      port: {{ $prom.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $prom.name }}
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    app: {{ $prom.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $prom.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $prom.name }}
+    spec:
+      serviceAccountName: {{ $prom.name }}
+      containers:
+        - name: {{ $prom.name }}
+          image: {{ $prom.image }}
+          args:
+            - --config.file=/etc/prometheus/prometheus.yml
+            - --storage.tsdb.path=/prometheus
+          ports:
+            - name: http
+              containerPort: {{ $prom.port }}
+          resources:
+            {{- toYaml $prom.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus
+            - name: data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $prom.name }}-config
+        - name: data
+          emptyDir: {}
+

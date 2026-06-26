@@ -1,0 +1,90 @@
+{{- $db := .Values.data.mongodb }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $db.name }}-secret
+  namespace: {{ .Values.namespaces.data }}
+type: Opaque
+stringData:
+  MONGO_INITDB_ROOT_USERNAME: {{ $db.username | quote }}
+  MONGO_INITDB_ROOT_PASSWORD: {{ $db.password | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $db.name }}
+  namespace: {{ .Values.namespaces.data }}
+  labels:
+    app: {{ $db.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $db.name }}
+  ports:
+    - name: mongodb
+      port: {{ $db.port }}
+      targetPort: mongodb
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $db.name }}
+  namespace: {{ .Values.namespaces.data }}
+  labels:
+    app: {{ $db.name }}
+spec:
+  serviceName: {{ $db.name }}
+  replicas: {{ $db.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $db.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $db.name }}
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: {{ $db.name }}
+          image: {{ $db.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: mongodb
+              containerPort: {{ $db.port }}
+          envFrom:
+            - secretRef:
+                name: {{ $db.name }}-secret
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval 'db.adminCommand("ping").ok'
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - mongosh --quiet --username "$MONGO_INITDB_ROOT_USERNAME" --password "$MONGO_INITDB_ROOT_PASSWORD" --authenticationDatabase admin --eval 'db.adminCommand("ping").ok'
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml $db.resources | nindent 12 }}
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-data
+      spec:
+        {{- include "job-platform.pvcStorageClass" $db | nindent 8 }}
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ $db.storage }}
+

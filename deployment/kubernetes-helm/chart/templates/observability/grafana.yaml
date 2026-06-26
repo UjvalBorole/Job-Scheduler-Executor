@@ -1,0 +1,89 @@
+{{- $grafana := .Values.observability.grafana }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $grafana.name }}-secret
+  namespace: {{ .Values.namespaces.observability }}
+type: Opaque
+stringData:
+  GF_SECURITY_ADMIN_USER: {{ $grafana.adminUser | quote }}
+  GF_SECURITY_ADMIN_PASSWORD: {{ $grafana.adminPassword | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $grafana.name }}-datasources
+  namespace: {{ .Values.namespaces.observability }}
+data:
+  datasources.yaml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ .Values.observability.prometheus.name }}:{{ .Values.observability.prometheus.port }}
+        isDefault: true
+      - name: Loki
+        type: loki
+        access: proxy
+        url: http://{{ .Values.observability.loki.name }}:{{ .Values.observability.loki.port }}
+      - name: Tempo
+        type: tempo
+        access: proxy
+        url: http://{{ .Values.observability.tempo.name }}:{{ .Values.observability.tempo.httpPort }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $grafana.name }}
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    app: {{ $grafana.name }}
+spec:
+  type: {{ $grafana.serviceType }}
+  selector:
+    app: {{ $grafana.name }}
+  ports:
+    - name: http
+      port: {{ $grafana.port }}
+      targetPort: http
+      {{- if eq $grafana.serviceType "NodePort" }}
+      nodePort: {{ $grafana.nodePort }}
+      {{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $grafana.name }}
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    app: {{ $grafana.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $grafana.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $grafana.name }}
+    spec:
+      containers:
+        - name: {{ $grafana.name }}
+          image: {{ $grafana.image }}
+          ports:
+            - name: http
+              containerPort: {{ $grafana.port }}
+          envFrom:
+            - secretRef:
+                name: {{ $grafana.name }}-secret
+          resources:
+            {{- toYaml $grafana.resources | nindent 12 }}
+          volumeMounts:
+            - name: datasources
+              mountPath: /etc/grafana/provisioning/datasources
+      volumes:
+        - name: datasources
+          configMap:
+            name: {{ $grafana.name }}-datasources
+

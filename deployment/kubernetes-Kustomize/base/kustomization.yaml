@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespaces/namespaces.yaml
+  - data/postgres.yaml
+  - data/mongodb.yaml
+  - data/redis.yaml
+  - data/kafka.yaml
+  - data/minio.yaml
+  - observability/prometheus.yaml
+  - observability/grafana.yaml
+  - observability/loki.yaml
+  - observability/promtail.yaml
+  - observability/tempo.yaml
+  - apps/api-gateway.yaml
+  - apps/job-service.yaml
+  - apps/job-consumer.yaml
+  - apps/job-scheduler.yaml
+  - apps/job-cron-executor.yaml
+  - apps/job-manual-executor.yaml
+  - ingress/ingress.yaml
+  - policies/app-pdb.yaml

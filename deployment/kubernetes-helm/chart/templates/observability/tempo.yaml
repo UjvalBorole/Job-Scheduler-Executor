@@ -1,0 +1,75 @@
+{{- $tempo := .Values.observability.tempo }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $tempo.name }}-config
+  namespace: {{ .Values.namespaces.observability }}
+data:
+  tempo.yaml: |
+    server:
+      http_listen_port: {{ $tempo.httpPort }}
+    distributor:
+      receivers:
+        zipkin:
+    storage:
+      trace:
+        backend: local
+        local:
+          path: /tmp/tempo/traces
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $tempo.name }}
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    app: {{ $tempo.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $tempo.name }}
+  ports:
+    - name: http
+      port: {{ $tempo.httpPort }}
+      targetPort: http
+    - name: zipkin
+      port: {{ $tempo.zipkinPort }}
+      targetPort: zipkin
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $tempo.name }}
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    app: {{ $tempo.name }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $tempo.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $tempo.name }}
+    spec:
+      containers:
+        - name: {{ $tempo.name }}
+          image: {{ $tempo.image }}
+          args:
+            - -config.file=/etc/tempo/tempo.yaml
+          ports:
+            - name: http
+              containerPort: {{ $tempo.httpPort }}
+            - name: zipkin
+              containerPort: {{ $tempo.zipkinPort }}
+          resources:
+            {{- toYaml $tempo.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/tempo
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $tempo.name }}-config
+

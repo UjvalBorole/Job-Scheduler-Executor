@@ -1,0 +1,587 @@
+pipeline {
+    // Agent configuration with multiple labels and Docker support
+    agent {
+        label 'master'
+    }
+    
+    // Tools configuration
+    tools {
+        maven 'Maven-3.8.4'
+        jdk 'JDK-11'
+    }
+    
+    // Parameters for dynamic builds
+    parameters {
+        choice(
+            name: 'DEPLOY_ENV',
+            choices: ['dev', 'staging', 'production'],
+            description: 'Select deployment environment'
+        )
+        string(
+            name: 'BRANCH_NAME',
+            defaultValue: 'main',
+            description: 'Git branch to build'
+        )
+        booleanParam(
+            name: 'RUN_TESTS',
+            defaultValue: true,
+            description: 'Run test suite'
+        )
+        choice(
+            name: 'BUILD_TYPE',
+            choices: ['full', 'incremental', 'quick'],
+            description: 'Type of build'
+        )
+        password(
+            name: 'DEPLOY_TOKEN',
+            defaultValue: '',
+            description: 'Token for deployment authentication'
+        )
+        file(
+            name: 'CONFIG_FILE',
+            description: 'Upload custom configuration file'
+        )
+    }
+    
+    // Environment variables
+    environment {
+        BUILD_TIMESTAMP = currentBuild.startTimeInMillis.toString()
+        DOCKER_REGISTRY = 'registry.example.com'
+        APP_NAME = 'my-application'
+        VERSION = "${env.BUILD_NUMBER}-${env.BRANCH_NAME}"
+        SONAR_HOST_URL = 'http://sonarqube.example.com'
+        DEPLOYMENT_ID = UUID.randomUUID().toString()
+        
+        // Credentials from Jenkins
+        DOCKER_CREDS = credentials('docker-credentials')
+        SONAR_CREDS = credentials('sonarqube-token')
+        AWS_CREDS = credentials('aws-credentials')
+    }
+    
+    // Triggers for automatic builds
+    triggers {
+        cron('H 1 * * *')  // Daily at 1 AM
+        pollSCM('H/5 * * * *')  // Poll SCM every 5 minutes
+        upstream(upstreamProjects: 'parent-pipeline', threshold: hudson.model.Result.SUCCESS)
+        githubPush()  // GitHub webhook trigger
+    }
+    
+    // Shared library imports
+    libraries {
+        lib('shared-library@main')
+    }
+    
+    stages {
+        stage('SCM Checkout') {
+            steps {
+                script {
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: "*/${params.BRANCH_NAME}"]],
+                        userRemoteConfigs: [[
+                            credentialsId: 'github-credentials',
+                            url: 'https://github.com/your-org/your-repo.git'
+                        ]],
+                        extensions: [
+                            [$class: 'SubmoduleOption', 
+                             recursiveSubmodules: true,
+                             parentCredentials: true],
+                            [$class: 'CleanBeforeCheckout'],
+                            [$class: 'CloneOption', 
+                             depth: 0,
+                             noTags: false,
+                             reference: '',
+                             shallow: false]
+                        ]
+                    ])
+                }
+            }
+        }
+        
+        stage('Initialize') {
+            parallel {
+                stage('Version Generation') {
+                    steps {
+                        script {
+                            def version = sh(script: 'git describe --tags --always', returnStdout: true).trim()
+                            env.APP_VERSION = version
+                            currentBuild.displayName = "${env.APP_VERSION}-${env.BUILD_NUMBER}"
+                        }
+                    }
+                }
+                stage('Dependency Analysis') {
+                    steps {
+                        script {
+                            // Parse dependencies and check for vulnerabilities
+                            sh '''
+                                mvn dependency:tree > dependencies.txt
+                                mvn dependency:analyze
+                            '''
+                        }
+                    }
+                }
+                stage('Code Quality Gate') {
+                    steps {
+                        script {
+                            // Check if sonarqube quality gate passes
+                            withSonarQubeEnv('SonarQube') {
+                                sh 'mvn sonar:sonar'
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Build') {
+            parallel {
+                stage('Compile') {
+                    steps {
+                        script {
+                            if (params.BUILD_TYPE == 'quick') {
+                                sh 'mvn clean compile -DskipTests'
+                            } else if (params.BUILD_TYPE == 'incremental') {
+                                sh 'mvn compile -Dmaven.test.skip=true'
+                            } else {
+                                sh 'mvn clean compile'
+                            }
+                        }
+                    }
+                }
+                stage('Unit Tests') {
+                    when {
+                        expression { params.RUN_TESTS == true }
+                    }
+                    steps {
+                        script {
+                            try {
+                                sh 'mvn test -Dtest=*Test'
+                            } catch (Exception e) {
+                                // Custom error handling
+                                currentBuild.result = 'UNSTABLE'
+                                echo "Unit tests failed but continuing"
+                                archiveArtifacts artifacts: 'target/surefire-reports/*.xml', 
+                                              fingerprint: true
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            junit 'target/surefire-reports/*.xml'
+                        }
+                        success {
+                            echo 'All unit tests passed'
+                        }
+                    }
+                }
+                stage('Integration Tests') {
+                    when {
+                        branch 'develop|main'
+                        expression { params.DEPLOY_ENV == 'staging' }
+                    }
+                    steps {
+                        script {
+                            // Start test containers
+                            sh '''
+                                docker-compose -f docker-compose.test.yml up -d
+                                sleep 30
+                                mvn verify -Pintegration-tests
+                            '''
+                        }
+                    }
+                    post {
+                        always {
+                            sh 'docker-compose -f docker-compose.test.yml down'
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Static Code Analysis') {
+            parallel {
+                stage('SonarQube') {
+                    steps {
+                        script {
+                            withSonarQubeEnv('SonarQube') {
+                                sh 'mvn sonar:sonar -Dsonar.qualitygate.wait=true'
+                            }
+                        }
+                    }
+                }
+                stage('Security Scan') {
+                    steps {
+                        script {
+                            // OWASP Dependency Check
+                            sh 'mvn org.owasp:dependency-check-maven:check'
+                            
+                            // Trivy container scanner
+                            sh '''
+                                trivy filesystem --severity HIGH,CRITICAL --exit-code 1 .
+                            '''
+                        }
+                    }
+                }
+                stage('Performance Tests') {
+                    when {
+                        expression { params.DEPLOY_ENV == 'production' }
+                    }
+                    steps {
+                        script {
+                            // Load testing with JMeter
+                            sh 'jmeter -n -t test-plan.jmx -l results.jtl'
+                            
+                            // Parse JMeter results
+                            def responseTime = sh(script: '''
+                                grep -o 'responseTime="[0-9]*"' results.jtl | cut -d'"' -f2 | awk '{sum+=$1} END {print sum/NR}'
+                            ''', returnStdout: true).trim()
+                            
+                            if (responseTime.toInteger() > 1000) {
+                                currentBuild.result = 'UNSTABLE'
+                                echo "Performance threshold exceeded: ${responseTime}ms"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Package') {
+            steps {
+                script {
+                    // Create package with version
+                    sh '''
+                        mvn package -DskipTests
+                        docker build -t ${DOCKER_REGISTRY}/${APP_NAME}:${VERSION} .
+                    '''
+                    
+                    // Save artifacts with metadata
+                    def artifactName = "${APP_NAME}-${VERSION}.jar"
+                    sh "mv target/*.jar ${artifactName}"
+                    
+                    // Upload to artifact repository
+                    withCredentials([string(credentialsId: 'artifact-repo-token', variable: 'REPO_TOKEN')]) {
+                        sh '''
+                            curl -X POST \
+                                -H "Authorization: Bearer ${REPO_TOKEN}" \
+                                -F "file=@${artifactName}" \
+                                https://artifact-repo.example.com/upload
+                        '''
+                    }
+                    
+                    archiveArtifacts artifacts: "${artifactName}", fingerprint: true
+                }
+            }
+        }
+        
+        stage('Push Docker Image') {
+            when {
+                expression { params.DEPLOY_ENV != 'dev' }
+                branch 'main|develop'
+            }
+            steps {
+                script {
+                    docker.withRegistry("https://${DOCKER_REGISTRY}", 'docker-credentials') {
+                        // Build and push multi-architecture images
+                        sh '''
+                            docker buildx create --use
+                            docker buildx build \
+                                --platform linux/amd64,linux/arm64 \
+                                -t ${DOCKER_REGISTRY}/${APP_NAME}:${VERSION} \
+                                -t ${DOCKER_REGISTRY}/${APP_NAME}:latest \
+                                --push .
+                        '''
+                    }
+                }
+            }
+        }
+        
+        stage('Deployment') {
+            matrix {
+                axes {
+                    axis(name: 'ENVIRONMENT', values: ['dev', 'staging', 'production'])
+                    axis(name: 'CLUSTER', values: ['primary', 'secondary'])
+                }
+                
+                when {
+                    expression { params.DEPLOY_ENV == ENVIRONMENT }
+                }
+                
+                stages {
+                    stage("Deploy to ${ENVIRONMENT}") {
+                        steps {
+                            script {
+                                // Load environment-specific configuration
+                                def config = loadConfig("${ENVIRONMENT}-${CLUSTER}")
+                                
+                                // Kubernetes deployment
+                                sh """
+                                    kubectl config use-context ${ENVIRONMENT}-${CLUSTER}
+                                    helm upgrade --install ${APP_NAME} ./helm-chart \
+                                        --set image.tag=${VERSION} \
+                                        --set environment=${ENVIRONMENT} \
+                                        --set deployment.id=${DEPLOYMENT_ID} \
+                                        -f ./helm-chart/values-${ENVIRONMENT}.yaml
+                                """
+                                
+                                // Blue/Green deployment strategy
+                                def currentActive = sh(script: "kubectl get svc ${APP_NAME} -o jsonpath='{.spec.selector.color}'", 
+                                    returnStdout: true).trim()
+                                
+                                def newColor = currentActive == 'blue' ? 'green' : 'blue'
+                                
+                                sh """
+                                    kubectl patch deployment ${APP_NAME} -p \
+                                        '{"spec":{"template":{"metadata":{"labels":{"color":"${newColor}"}}}}}'
+                                    
+                                    # Verify new deployment
+                                    kubectl rollout status deployment/${APP_NAME} --timeout=5m
+                                    
+                                    # Switch traffic
+                                    kubectl patch service ${APP_NAME} -p \
+                                        '{"spec":{"selector":{"color":"${newColor}"}}}'
+                                """
+                                
+                                // Canary deployment with Istio
+                                if (ENVIRONMENT == 'production') {
+                                    sh """
+                                        istioctl apply -f - <<EOF
+                                        apiVersion: networking.istio.io/v1beta1
+                                        kind: VirtualService
+                                        metadata:
+                                          name: ${APP_NAME}
+                                        spec:
+                                          hosts:
+                                          - ${APP_NAME}
+                                          http:
+                                          - route:
+                                            - destination:
+                                                host: ${APP_NAME}
+                                                subset: v${VERSION}
+                                              weight: 10
+                                            - destination:
+                                                host: ${APP_NAME}
+                                                subset: v1
+                                              weight: 90
+                                        EOF
+                                    """
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                post {
+                    success {
+                        script {
+                            // Send deployment success notification
+                            notifyDeployment("${ENVIRONMENT}", "SUCCESS")
+                        }
+                    }
+                    failure {
+                        script {
+                            // Rollback on failure
+                            sh "kubectl rollout undo deployment/${APP_NAME}"
+                            notifyDeployment("${ENVIRONMENT}", "FAILURE")
+                        }
+                    }
+                }
+            }
+        }
+        
+        stage('Post-Deployment Validation') {
+            when {
+                expression { params.DEPLOY_ENV == 'production' }
+            }
+            steps {
+                script {
+                    parallel([
+                        "Smoke Tests": {
+                            sh '''
+                                npm run test:smoke
+                            '''
+                        },
+                        "Integration Tests": {
+                            sh '''
+                                npm run test:integration
+                            '''
+                        },
+                        "Performance Monitoring": {
+                            // Wait for app to warm up
+                            sleep 60
+                            
+                            // Monitor application performance
+                            sh '''
+                                curl -s -o /dev/null -w "%{http_code}\n" https://app.example.com/health
+                                prometheus-api -query 'http_requests_total{status=200}' > metrics.txt
+                            '''
+                        },
+                        "Security Testing": {
+                            sh '''
+                                nikto -h https://app.example.com
+                                zap-cli quick-scan --self-contained --start-options '-config api.disablekey=true' \
+                                    https://app.example.com
+                            '''
+                        }
+                    ])
+                }
+            }
+        }
+    }
+    
+    // Post-build actions
+    post {
+        always {
+            script {
+                // Clean up workspace
+                cleanWs()
+                
+                // Save build metadata
+                def metadata = """
+                    BUILD_NUMBER=${env.BUILD_NUMBER}
+                    VERSION=${env.VERSION}
+                    DEPLOY_ENV=${params.DEPLOY_ENV}
+                    APP_VERSION=${env.APP_VERSION}
+                    DEPLOYMENT_ID=${env.DEPLOYMENT_ID}
+                    BRANCH=${params.BRANCH_NAME}
+                    COMMIT=${sh(script: 'git rev-parse HEAD', returnStdout: true).trim()}
+                    BUILD_TIMESTAMP=${env.BUILD_TIMESTAMP}
+                """
+                writeFile file: 'build-metadata.properties', text: metadata
+                archiveArtifacts artifacts: 'build-metadata.properties'
+            }
+        }
+        success {
+            script {
+                // Update deployment status in external systems
+                def status = [
+                    status: 'SUCCESS',
+                    version: env.VERSION,
+                    environment: params.DEPLOY_ENV,
+                    timestamp: System.currentTimeMillis()
+                ]
+                
+                // Write status to file
+                writeJSON file: 'deployment-status.json', json: status
+                
+                // Send success notifications
+                slackSend(
+                    color: '#00FF00',
+                    message: "Deployment SUCCESSFUL: ${env.JOB_NAME} #${env.BUILD_NUMBER} to ${params.DEPLOY_ENV}",
+                    tokenCredentialId: 'slack-token'
+                )
+                
+                // Email notification
+                emailext(
+                    to: 'devops-team@example.com',
+                    subject: "Build Success: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        Build completed successfully.
+                        Application: ${APP_NAME}
+                        Version: ${VERSION}
+                        Environment: ${params.DEPLOY_ENV}
+                        Deployment URL: https://${APP_NAME}.${params.DEPLOY_ENV}.example.com
+                    """
+                )
+            }
+        }
+        failure {
+            script {
+                def errorMsg = "Deployment FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER} to ${params.DEPLOY_ENV}"
+                
+                // Send failure notifications
+                slackSend(
+                    color: '#FF0000',
+                    message: errorMsg,
+                    tokenCredentialId: 'slack-token'
+                )
+                
+                emailext(
+                    to: 'devops-team@example.com, oncall@example.com',
+                    subject: "Build FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """
+                        Build failed. Please check the logs.
+                        Application: ${APP_NAME}
+                        Environment: ${params.DEPLOY_ENV}
+                        Error: ${currentBuild.result}
+                        Logs: ${env.BUILD_URL}console
+                    """
+                )
+                
+                // Create incident in ServiceNow
+                sh """
+                    curl -X POST https://servicenow.example.com/api/incidents \
+                        -H "Authorization: Bearer ${SERVICENOW_TOKEN}" \
+                        -H "Content-Type: application/json" \
+                        -d '{
+                            "short_description": "${errorMsg}",
+                            "description": "Build failed in Jenkins. Check console output for details.",
+                            "impact": "3",
+                            "urgency": "3"
+                        }'
+                """
+            }
+        }
+        cleanup {
+            script {
+                // Clean up temporary resources
+                sh '''
+                    docker system prune -f
+                    docker images prune -f
+                    
+                    # Clean up test containers
+                    docker ps -a | grep "${APP_NAME}-test" | awk '{print $1}' | xargs -r docker rm -f
+                    
+                    # Delete old helm releases
+                    helm list --deleting -q | xargs -r helm delete
+                '''
+            }
+        }
+        fixed {
+            script {
+                // Special notifications for fixed builds
+                slackSend(
+                    color: '#00FF00',
+                    message: "Build FIXED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    tokenCredentialId: 'slack-token'
+                )
+            }
+        }
+        regressed {
+            script {
+                // Notify about regressions
+                slackSend(
+                    color: '#FFA500',
+                    message: "Build REGRESSED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    tokenCredentialId: 'slack-token'
+                )
+            }
+        }
+    }
+}
+
+// Helper functions
+def loadConfig(environment) {
+    // Load environment-specific configuration
+    def config = readJSON file: "configs/${environment}.json"
+    return config
+}
+
+def notifyDeployment(environment, status) {
+    // Custom notification function
+    def message = "Deployment to ${environment} ${status}"
+    // Additional notification logic here
+}
+
+// Shared library function usage
+def buildWithSharedLib() {
+    // Use shared library functions
+    def result = notifySlack(status: 'STARTING')
+    // More shared library usage
+}
+
+// Pipeline script approval markers
+// Add this to the script approval section in Jenkins:
+// new groovy.json.JsonSlurperClassic().parseText(java.lang.String)
+// new java.util.UUID.randomUUID()
+// method java.lang.ProcessBuilder command java.lang.String[]

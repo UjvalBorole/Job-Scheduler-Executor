@@ -1,0 +1,28 @@
+namespaces:
+  environment: dev
+
+ingress:
+  host: jobs.local
+
+data:
+  postgres:
+    storageClassName: hostpath
+    storage: 2Gi
+  mongodb:
+    storageClassName: hostpath
+    storage: 2Gi
+  redis:
+    storageClassName: hostpath
+    storage: 1Gi
+  kafka:
+    storageClassName: hostpath
+    storage: 5Gi
+  minio:
+    storageClassName: hostpath
+    storage: 5Gi
+
+observability:
+  loki:
+    storageClassName: hostpath
+    storage: 2Gi
+

@@ -1,0 +1,54 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: api-gateway
+  namespace: job-scheduler
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: api-gateway
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: job-service
+  namespace: job-scheduler
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: job-service
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: job-consumer
+  namespace: job-scheduler
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: job-consumer
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: job-cron-executor
+  namespace: job-scheduler
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: job-cron-executor
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: job-manual-executor
+  namespace: job-scheduler
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app: job-manual-executor
