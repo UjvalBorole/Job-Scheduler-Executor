@@ -1,0 +1,103 @@
+{{- $minio := .Values.data.minio }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $minio.name }}-secret
+  namespace: {{ .Values.namespaces.data }}
+type: Opaque
+stringData:
+  MINIO_ROOT_USER: {{ $minio.rootUser | quote }}
+  MINIO_ROOT_PASSWORD: {{ $minio.rootPassword | quote }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $minio.name }}-app-secret
+  namespace: {{ .Values.namespaces.app }}
+type: Opaque
+stringData:
+  access-key: {{ $minio.rootUser | quote }}
+  secret-key: {{ $minio.rootPassword | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $minio.name }}
+  namespace: {{ .Values.namespaces.data }}
+  labels:
+    app: {{ $minio.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $minio.name }}
+  ports:
+    - name: api
+      port: {{ $minio.apiPort }}
+      targetPort: api
+    - name: console
+      port: {{ $minio.consolePort }}
+      targetPort: console
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $minio.name }}
+  namespace: {{ .Values.namespaces.data }}
+  labels:
+    app: {{ $minio.name }}
+spec:
+  serviceName: {{ $minio.name }}
+  replicas: {{ $minio.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $minio.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $minio.name }}
+    spec:
+      containers:
+        - name: {{ $minio.name }}
+          image: {{ $minio.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args:
+            - server
+            - /data
+            - --console-address
+            - :{{ $minio.consolePort }}
+          ports:
+            - name: api
+              containerPort: {{ $minio.apiPort }}
+            - name: console
+              containerPort: {{ $minio.consolePort }}
+          envFrom:
+            - secretRef:
+                name: {{ $minio.name }}-secret
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          resources:
+            {{- toYaml $minio.resources | nindent 12 }}
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: minio-data
+      spec:
+        {{- include "job-platform.pvcStorageClass" $minio | nindent 8 }}
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ $minio.storage }}
+

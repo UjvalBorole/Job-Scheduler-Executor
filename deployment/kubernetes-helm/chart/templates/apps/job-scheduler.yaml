@@ -1,0 +1,83 @@
+{{- $app := .Values.apps.jobScheduler }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $app.name }}
+  namespace: {{ .Values.namespaces.app }}
+  labels:
+    app: {{ $app.name }}
+spec:
+  replicas: {{ $app.replicas }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: {{ $app.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $app.name }}
+        logging: promtail
+    spec:
+      terminationGracePeriodSeconds: {{ $app.terminationGracePeriodSeconds }}
+      containers:
+        - name: {{ $app.name }}
+          image: {{ include "job-platform.image" $app }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $app.port }}
+          env:
+            {{- include "job-platform.commonSpringEnv" . | nindent 12 }}
+            - name: SPRING_APPLICATION_NAME
+              value: {{ $app.springApplicationName | quote }}
+            - name: SERVER_PORT
+              value: {{ $app.port | quote }}
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: {{ include "job-platform.kafkaAddress" . | quote }}
+            - name: REDIS_HOST
+              value: {{ include "job-platform.redisHost" . | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.data.redis.port | quote }}
+            - name: WEBCLIENT_BASE_URL
+              value: {{ include "job-platform.consumerUrl" . | quote }}
+            {{- include "job-platform.tracingEnv" . | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: {{ $app.readinessInitialDelaySeconds }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: {{ $app.livenessInitialDelaySeconds }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml $app.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $app.name }}
+  namespace: {{ .Values.namespaces.app }}
+  labels:
+    app: {{ $app.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $app.name }}
+  ports:
+    - name: http
+      port: {{ $app.port }}
+      targetPort: http
+

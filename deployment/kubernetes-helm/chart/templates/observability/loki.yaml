@@ -1,0 +1,95 @@
+{{- $loki := .Values.observability.loki }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $loki.name }}-config
+  namespace: {{ .Values.namespaces.observability }}
+data:
+  loki.yaml: |
+    auth_enabled: false
+    server:
+      http_listen_port: {{ $loki.port }}
+    common:
+      path_prefix: /loki
+      storage:
+        filesystem:
+          chunks_directory: /loki/chunks
+          rules_directory: /loki/rules
+      replication_factor: 1
+      ring:
+        kvstore:
+          store: inmemory
+    schema_config:
+      configs:
+        - from: 2024-01-01
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $loki.name }}
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    app: {{ $loki.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $loki.name }}
+  ports:
+    - name: http
+      port: {{ $loki.port }}
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $loki.name }}
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    app: {{ $loki.name }}
+spec:
+  serviceName: {{ $loki.name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      app: {{ $loki.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $loki.name }}
+    spec:
+      containers:
+        - name: {{ $loki.name }}
+          image: {{ $loki.image }}
+          args:
+            - -config.file=/etc/loki/loki.yaml
+          ports:
+            - name: http
+              containerPort: {{ $loki.port }}
+          resources:
+            {{- toYaml $loki.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki
+            - name: data
+              mountPath: /loki
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $loki.name }}-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        {{- include "job-platform.pvcStorageClass" $loki | nindent 8 }}
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ $loki.storage }}
+

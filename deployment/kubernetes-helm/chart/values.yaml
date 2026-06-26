@@ -1,0 +1,339 @@
+global:
+  imagePullPolicy: IfNotPresent
+  timezone: Asia/Kolkata
+  javaTimezone: Asia/Kolkata
+  profile: kubernetes
+  partOf: job-platform
+
+namespaces:
+  create: true
+  app: job-scheduler
+  data: data
+  observability: observability
+  environment: base
+
+ingress:
+  enabled: true
+  name: job-platform
+  className: nginx
+  host: jobs.local
+  path: /
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "120"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "120"
+
+apps:
+  apiGateway:
+    name: api-gateway
+    tier: edge
+    image: boroleujval4/api-gateway
+    tag: 1.0.0
+    replicas: 2
+    port: 8091
+    springApplicationName: api-gateway
+    terminationGracePeriodSeconds: 45
+    minReadySeconds: 10
+    readinessInitialDelaySeconds: 30
+    livenessInitialDelaySeconds: 90
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 768Mi
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      averageUtilization: 70
+    pdb:
+      enabled: true
+      minAvailable: 1
+
+  jobService:
+    name: job-service
+    image: boroleujval4/job-service
+    tag: 1.0.0
+    replicas: 2
+    port: 8081
+    springApplicationName: job-service
+    terminationGracePeriodSeconds: 45
+    minReadySeconds: 10
+    readinessInitialDelaySeconds: 45
+    livenessInitialDelaySeconds: 90
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 768Mi
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      averageUtilization: 70
+    pdb:
+      enabled: true
+      minAvailable: 1
+
+  jobConsumer:
+    name: job-consumer
+    image: boroleujval4/job-consumersvc
+    tag: 1.0.0
+    replicas: 2
+    port: 8082
+    springApplicationName: consumer
+    terminationGracePeriodSeconds: 45
+    minReadySeconds: 10
+    readinessInitialDelaySeconds: 60
+    livenessInitialDelaySeconds: 120
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 768Mi
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      averageUtilization: 70
+    pdb:
+      enabled: true
+      minAvailable: 1
+    secrets:
+      postgresUsername: root
+      postgresPassword: root
+      mongodbUsername: admin
+      mongodbPassword: admin123
+
+  jobScheduler:
+    name: job-scheduler
+    image: boroleujval4/job-schedulersvc
+    tag: 1.0.0
+    replicas: 1
+    port: 8083
+    springApplicationName: scheduler
+    terminationGracePeriodSeconds: 45
+    readinessInitialDelaySeconds: 45
+    livenessInitialDelaySeconds: 90
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 750m
+        memory: 768Mi
+
+  jobCronExecutor:
+    name: job-cron-executor
+    image: boroleujval4/job-cronexecutor
+    tag: 1.0.0
+    replicas: 2
+    port: 8084
+    springApplicationName: cronexecutor
+    terminationGracePeriodSeconds: 60
+    minReadySeconds: 10
+    readinessInitialDelaySeconds: 60
+    livenessInitialDelaySeconds: 90
+    resources:
+      requests:
+        cpu: 300m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 768Mi
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      averageUtilization: 70
+    pdb:
+      enabled: true
+      minAvailable: 1
+
+  jobManualExecutor:
+    name: job-manual-executor
+    image: boroleujval4/job-manualexecutor
+    tag: 1.0.0
+    replicas: 3
+    port: 8085
+    springApplicationName: executorManual
+    terminationGracePeriodSeconds: 60
+    minReadySeconds: 10
+    readinessInitialDelaySeconds: 60
+    livenessInitialDelaySeconds: 90
+    resources:
+      requests:
+        cpu: 300m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 768Mi
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 15
+      averageUtilization: 70
+    pdb:
+      enabled: true
+      minAvailable: 2
+
+data:
+  postgres:
+    name: postgres
+    image: postgres:14
+    replicas: 1
+    database: JobDB
+    username: root
+    password: root
+    port: 5432
+    storage: 5Gi
+    storageClassName: ""
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  mongodb:
+    name: mongodb
+    image: mongo:6.0
+    replicas: 1
+    username: admin
+    password: admin123
+    port: 27017
+    storage: 5Gi
+    storageClassName: ""
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  redis:
+    name: redis
+    image: redis:7
+    replicas: 1
+    port: 6379
+    storage: 2Gi
+    storageClassName: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  kafka:
+    name: kafka
+    image: apache/kafka:3.7.0
+    replicas: 1
+    clientPort: 9092
+    controllerPort: 9093
+    clusterId: AAAAAAAAAAAAAAAAAAAAAQ
+    storage: 10Gi
+    storageClassName: ""
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: "2"
+        memory: 2Gi
+
+  minio:
+    name: minio
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    replicas: 1
+    rootUser: minioadmin
+    rootPassword: minioadmin123
+    bucket: job-uploads
+    apiPort: 9000
+    consolePort: 9001
+    storage: 10Gi
+    storageClassName: ""
+    resources:
+      requests:
+        cpu: 250m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+observability:
+  grafana:
+    name: grafana
+    image: grafana/grafana:10.4.2
+    adminUser: admin
+    adminPassword: admin123
+    serviceType: NodePort
+    nodePort: 32000
+    port: 3000
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+  prometheus:
+    name: prometheus
+    image: prom/prometheus:v2.51.2
+    port: 9090
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+
+  loki:
+    name: loki
+    image: grafana/loki:3.0.0
+    port: 3100
+    storage: 5Gi
+    storageClassName: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 768Mi
+
+  promtail:
+    name: promtail
+    image: grafana/promtail:2.9.3
+    port: 3101
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 250m
+        memory: 256Mi
+
+  tempo:
+    name: tempo
+    image: grafana/tempo:2.4.1
+    httpPort: 3200
+    zipkinPort: 9411
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+

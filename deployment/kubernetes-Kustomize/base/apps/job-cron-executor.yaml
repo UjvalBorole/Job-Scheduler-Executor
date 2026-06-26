@@ -1,0 +1,138 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-cron-executor
+  namespace: job-scheduler
+  labels:
+    app: job-cron-executor
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: job-cron-executor
+  template:
+    metadata:
+      labels:
+        app: job-cron-executor
+        logging: promtail
+    spec:
+      terminationGracePeriodSeconds: 60
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: job-cron-executor
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: job-cron-executor
+          image: boroleujval4/job-cronexecutor:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8084
+          env:
+            - name: TZ
+              value: Asia/Kolkata
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Duser.timezone=Asia/Kolkata"
+            - name: SPRING_APPLICATION_NAME
+              value: cronexecutor
+            - name: SPRING_PROFILES_ACTIVE
+              value: kubernetes
+            - name: SERVER_PORT
+              value: "8084"
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: kafka.data.svc.cluster.local:9092
+            - name: REDIS_HOST
+              value: redis.data.svc.cluster.local
+            - name: REDIS_PORT
+              value: "6379"
+            - name: WEBCLIENT_BASE_URL
+              value: http://job-consumer.job-scheduler.svc.cluster.local:8082
+            - name: OBJECT_STORAGE_ENDPOINT
+              value: http://minio.data.svc.cluster.local:9000
+            - name: OBJECT_STORAGE_BUCKET
+              value: job-uploads
+            - name: OBJECT_STORAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-app-secret
+                  key: access-key
+            - name: OBJECT_STORAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-app-secret
+                  key: secret-key
+            - name: MANAGEMENT_TRACING_ENABLED
+              value: "true"
+            - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+              value: http://tempo.observability.svc.cluster.local:9411/api/v2/spans
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 300m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-cron-executor
+  namespace: job-scheduler
+  labels:
+    app: job-cron-executor
+spec:
+  type: ClusterIP
+  selector:
+    app: job-cron-executor
+  ports:
+    - name: http
+      port: 8084
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: job-cron-executor
+  namespace: job-scheduler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: job-cron-executor
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

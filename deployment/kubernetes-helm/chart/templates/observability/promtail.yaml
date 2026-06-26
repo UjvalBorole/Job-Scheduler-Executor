@@ -1,0 +1,103 @@
+{{- $promtail := .Values.observability.promtail }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $promtail.name }}
+  namespace: {{ .Values.namespaces.observability }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $promtail.name }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "namespaces"]
+    verbs: ["get", "watch", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $promtail.name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $promtail.name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $promtail.name }}
+    namespace: {{ .Values.namespaces.observability }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $promtail.name }}-config
+  namespace: {{ .Values.namespaces.observability }}
+data:
+  promtail.yaml: |
+    server:
+      http_listen_port: {{ $promtail.port }}
+    positions:
+      filename: /tmp/positions.yaml
+    clients:
+      - url: http://{{ .Values.observability.loki.name }}:{{ .Values.observability.loki.port }}/loki/api/v1/push
+    scrape_configs:
+      - job_name: kubernetes-pods
+        kubernetes_sd_configs:
+          - role: pod
+        relabel_configs:
+          - source_labels: [__meta_kubernetes_namespace]
+            target_label: namespace
+          - source_labels: [__meta_kubernetes_pod_name]
+            target_label: pod
+          - source_labels: [__meta_kubernetes_pod_container_name]
+            target_label: container
+          - source_labels: [__meta_kubernetes_pod_label_app]
+            target_label: app
+          - replacement: /var/log/pods/*$1/*.log
+            separator: /
+            source_labels:
+              - __meta_kubernetes_pod_uid
+              - __meta_kubernetes_pod_container_name
+            target_label: __path__
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $promtail.name }}
+  namespace: {{ .Values.namespaces.observability }}
+  labels:
+    app: {{ $promtail.name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ $promtail.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $promtail.name }}
+    spec:
+      serviceAccountName: {{ $promtail.name }}
+      containers:
+        - name: {{ $promtail.name }}
+          image: {{ $promtail.image }}
+          args:
+            - -config.file=/etc/promtail/promtail.yaml
+          ports:
+            - name: http
+              containerPort: {{ $promtail.port }}
+          resources:
+            {{- toYaml $promtail.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/promtail
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ $promtail.name }}-config
+        - name: varlog
+          hostPath:
+            path: /var/log
+

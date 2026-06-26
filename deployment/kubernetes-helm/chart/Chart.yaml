@@ -1,0 +1,7 @@
+apiVersion: v2
+name: job-platform
+description: Helm chart for the Job Scheduling and Execution Kubernetes platform
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+

@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-scheduler
+  namespace: job-scheduler
+  labels:
+    app: job-scheduler
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: job-scheduler
+  template:
+    metadata:
+      labels:
+        app: job-scheduler
+        logging: promtail
+    spec:
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: job-scheduler
+          image: boroleujval4/job-schedulersvc:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8083
+          env:
+            - name: TZ
+              value: Asia/Kolkata
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Duser.timezone=Asia/Kolkata"
+            - name: SPRING_APPLICATION_NAME
+              value: scheduler
+            - name: SPRING_PROFILES_ACTIVE
+              value: kubernetes
+            - name: SERVER_PORT
+              value: "8083"
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: kafka.data.svc.cluster.local:9092
+            - name: REDIS_HOST
+              value: redis.data.svc.cluster.local
+            - name: REDIS_PORT
+              value: "6379"
+            - name: WEBCLIENT_BASE_URL
+              value: http://job-consumer.job-scheduler.svc.cluster.local:8082
+            - name: MANAGEMENT_TRACING_ENABLED
+              value: "true"
+            - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+              value: http://tempo.observability.svc.cluster.local:9411/api/v2/spans
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 90
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 750m
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-scheduler
+  namespace: job-scheduler
+  labels:
+    app: job-scheduler
+spec:
+  type: ClusterIP
+  selector:
+    app: job-scheduler
+  ports:
+    - name: http
+      port: 8083
+      targetPort: http
