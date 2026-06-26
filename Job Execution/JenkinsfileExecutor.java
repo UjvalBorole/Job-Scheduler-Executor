@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -29,53 +28,13 @@ public class JenkinsfileExecutor {
     private static final Map<String, String> envMap = EnvMapProvider.getEnvMap();
     private static final int DEFAULT_TIMEOUT_MILLIS = 3600000; // 1 hour
     private static final Pattern ENV_VAR_PATTERN = Pattern.compile("\\$\\{([^}]+)\\}");
-    private static final Pattern PARAM_VAR_PATTERN = Pattern.compile("\\$\\{params\\.([^}]+)\\}");
-    private static final Pattern DOCKER_AGENT_PATTERN = Pattern.compile("docker\\s*\\{([^}]+?)\\}", Pattern.DOTALL);
-    private static final Pattern KUBERNETES_AGENT_PATTERN = Pattern.compile("kubernetes\\s*\\{([^}]+?)\\}", Pattern.DOTALL);
 
     private final ExecutorService executorService;
 
-    // ============================
-    // Advanced Agent Configuration
-    // ============================
-    private static class AgentConfig {
-        String type; // 'docker', 'kubernetes', 'label', 'any'
-        String image;
-        String label;
-        List<String> args = new ArrayList<>();
-        Map<String, String> registryCredentials = new HashMap<>();
-        Map<String, Object> kubeConfig = new HashMap<>();
-    }
-
-    // ============================
-    // Parameter Definition
-    // ============================
-    private static class ParameterDefinition {
-        String name;
-        String type; // choice, string, boolean, password, file
-        String defaultValue;
-        List<String> choices = new ArrayList<>();
-        String description;
-    }
-
-    // ============================
-    // Build Trigger
-    // ============================
-    private static class Trigger {
-        String type; // cron, pollSCM, upstream, webhook
-        String expression;
-        Map<String, Object> config = new HashMap<>();
-    }
-
-    // ============================
     // Stage execution context for managing state across stages
-    // ============================
     private static class PipelineExecutionContext {
         Map<String, String> globalEnv = new HashMap<>();
         Map<String, String> stageEnv = new HashMap<>();
-        Map<String, String> parametersValues = new HashMap<>();
-        Map<String, ParameterDefinition> parameters = new HashMap<>();
-        Map<String, String> credentials = new HashMap<>();
         List<StageResult> stageResults = new ArrayList<>();
         AtomicBoolean shouldFail = new AtomicBoolean(false);
         String failureStage = null;
@@ -83,9 +42,6 @@ public class JenkinsfileExecutor {
         Map<String, Object> variables = new HashMap<>(); // For storing outputs between stages
         int totalStages = 0;
         int completedStages = 0;
-        AgentConfig currentAgent = new AgentConfig();
-        LocalDateTime startTime;
-        LocalDateTime endTime;
     }
 
     // Result of stage execution
@@ -144,18 +100,11 @@ public class JenkinsfileExecutor {
     }
 
     // ============================
-    // ============================
-    // Pipeline Stage Model (Enhanced)
+    // Pipeline Stage Model
     // ============================
     private static class PipelineStage {
         String name;
-        String agentOverride;
         List<String> steps;
-        Map<String, String> stageEnvironment = new HashMap<>();
-        String whenCondition;
-        List<List<PipelineStage>> parallelStages;
-        Map<String, Object> matrixAxes;
-        boolean skipOnFailure = false;
 
         PipelineStage(String name, List<String> steps) {
             this.name = name;
@@ -273,70 +222,43 @@ public class JenkinsfileExecutor {
                                          PipelineExecutionContext context) throws Exception {
         List<String> lines = Files.readAllLines(Paths.get(jenkinsfilePath));
         
-        context.startTime = LocalDateTime.now();
-        
         // Parse pipeline components
-        AgentConfig agentConfig = parseAgentConfig(lines, logFile);
-        Map<String, ParameterDefinition> parametersMap = parseParameters(lines, logFile);
         Map<String, String> pipelineEnv = parseEnvironmentBlock(lines, logFile);
         Map<String, String> toolsEnv = parseToolsBlock(lines, logFile);
-        List<Trigger> triggers = parseTriggers(lines, logFile);
         List<PipelineStage> stages = parseStages(lines, logFile);
         Map<String, String> postActions = parsePostBlock(lines, logFile);
 
-        // Initialize context with all parsed configuration
+        // Initialize context
         context.globalEnv.putAll(pipelineEnv);
         context.globalEnv.putAll(toolsEnv);
         context.globalEnv.putAll(envMap);
-        context.parameters = parametersMap;
-        context.currentAgent = agentConfig;
         context.totalStages = stages.size();
 
         logToFile("📦 Parsed Configuration:", logFile);
-        logToFile("   - Agent type: " + agentConfig.type, logFile);
-        logToFile("   - Parameters: " + parametersMap.size(), logFile);
         logToFile("   - Environment variables: " + pipelineEnv.size(), logFile);
         logToFile("   - Tools: " + toolsEnv.size(), logFile);
-        logToFile("   - Triggers: " + triggers.size(), logFile);
         logToFile("   - Stages: " + stages.size(), logFile);
         logToFile("", logFile);
-
-        // Setup parameters with default values
-        setupParameters(context, logFile);
 
         // Execute each stage sequentially
         for (int i = 0; i < stages.size(); i++) {
             PipelineStage stage = stages.get(i);
-            
-            // Evaluate when condition
-            if (stage.whenCondition != null && !evaluateWhenCondition(stage.whenCondition, context)) {
-                logToFile("⏭️  Skipping stage: " + stage.name + " (when condition not met)", logFile);
-                continue;
-            }
             
             if (context.shouldFail.get()) {
                 logToFile("⚠️ Pipeline already failed. Skipping stage: " + stage.name, logFile);
                 continue;
             }
 
-            // Override agent if stage specifies one
-            AgentConfig stageAgent = stage.agentOverride != null && !stage.agentOverride.isEmpty() 
-                ? parseAgentFromString(stage.agentOverride, logFile)
-                : agentConfig;
-            context.currentAgent = stageAgent;
-
             boolean stageSuccess = executeStage(stage, i + 1, logFile, payload, context);
             context.completedStages++;
 
-            if (!stageSuccess && !stage.skipOnFailure) {
+            if (!stageSuccess) {
                 context.shouldFail.set(true);
                 context.failureStage = stage.name;
                 payload.setStatus(RunStatus.FAILED);
                 payload.setErrorMsg("Stage failed: " + stage.name);
             }
         }
-
-        context.endTime = LocalDateTime.now();
 
         // Execute post actions
         if (!postActions.isEmpty()) {
@@ -351,19 +273,15 @@ public class JenkinsfileExecutor {
     private boolean executeStage(PipelineStage stage, int stageNumber, String logFile, Payload payload,
                                   PipelineExecutionContext context) throws IOException, InterruptedException {
         long stageStartTime = System.currentTimeMillis();
-        String agentDisplay = context.currentAgent.type != null ? context.currentAgent.type : "local";
-        if ("docker".equals(context.currentAgent.type) && context.currentAgent.image != null) {
-            agentDisplay += " [" + context.currentAgent.image + "]";
-        }
         
         logToFile("\n┌─────────────────────────────────────────────────────────────", logFile);
-        logToFile("│ 🔄 STAGE " + stageNumber + ": " + stage.name + " [" + agentDisplay + "]", logFile);
+        logToFile("│ 🔄 STAGE " + stageNumber + ": " + stage.name, logFile);
         logToFile("├─────────────────────────────────────────────────────────────", logFile);
 
         try {
             // Execute all steps in the stage
             for (String step : stage.steps) {
-                String expandedStep = expandVariables(step, context);
+                String expandedStep = expandVariables(step, context.globalEnv);
                 
                 // Special handling for echo statements - they're just logging in Jenkinsfile
                 if (expandedStep.toLowerCase().startsWith("echo ")) {
@@ -458,21 +376,6 @@ public class JenkinsfileExecutor {
 
     private CommandResult executeCommand(String command, String logFile, PipelineExecutionContext context,
                                         String stageName) throws IOException, InterruptedException {
-        // Route command to appropriate executor based on agent type
-        String agentType = context.currentAgent.type != null ? context.currentAgent.type : "any";
-
-        switch (agentType) {
-            case "docker":
-                return executeCommandInDocker(command, logFile, context, stageName);
-            case "kubernetes":
-                return executeCommandInKubernetes(command, logFile, context, stageName);
-            default:
-                return executeCommandLocally(command, logFile, context, stageName);
-        }
-    }
-
-    private CommandResult executeCommandLocally(String command, String logFile, PipelineExecutionContext context,
-                                              String stageName) throws IOException, InterruptedException {
         ProcessBuilder builder = new ProcessBuilder();
         String os = System.getProperty("os.name").toLowerCase();
         boolean isWindows = os.contains("win");
@@ -498,133 +401,18 @@ public class JenkinsfileExecutor {
             env.put("CHCP", "65001");  // UTF-8 code page for Windows
         }
 
-        return executeProcess(builder, logFile, stageName);
-    }
-
-    private CommandResult executeCommandInDocker(String command, String logFile, PipelineExecutionContext context,
-                                                String stageName) throws IOException, InterruptedException {
-        logToFile("   🐳 Executing in Docker [", logFile);
-        
-        String image = context.currentAgent.image != null ? context.currentAgent.image : "alpine:latest";
-        logToFile("      Image: " + image, logFile);
-        logToFile("      Command: " + command, logFile);
-        
-        // Check if Docker is available
-        try {
-            ProcessBuilder checkDocker = new ProcessBuilder("docker", "--version");
-            Process dockerCheck = checkDocker.start();
-            int exitCode = dockerCheck.waitFor();
-            if (exitCode != 0) {
-                logToFile("   ⚠️  Docker not available - falling back to local execution", logFile);
-                return executeCommandLocally(command, logFile, context, stageName);
-            }
-        } catch (Exception e) {
-            logToFile("   ⚠️  Docker check failed: " + e.getMessage() + " - falling back to local", logFile);
-            return executeCommandLocally(command, logFile, context, stageName);
-        }
-        
-        // Build docker run command
-        List<String> dockerArgs = new ArrayList<>();
-        dockerArgs.add("docker");
-        dockerArgs.add("run");
-        dockerArgs.add("--rm");
-        
-        // Add any custom args from agent config
-        if (context.currentAgent.args != null && !context.currentAgent.args.isEmpty()) {
-            dockerArgs.addAll(context.currentAgent.args);
-        }
-        
-        // Add environment variables
-        for (Map.Entry<String, String> entry : context.globalEnv.entrySet()) {
-            dockerArgs.add("-e");
-            dockerArgs.add(entry.getKey() + "=" + entry.getValue());
-        }
-        
-        // Add image
-        dockerArgs.add(image);
-        
-        // Determine shell based on image OS
-        String shell = image.toLowerCase().contains("windows") ? "cmd.exe /c" : "/bin/sh -c";
-        dockerArgs.add(shell);
-        dockerArgs.add(command);
-        
-        logToFile("      Registry: " + (context.currentAgent.registryCredentials.isEmpty() ? "default" : "custom"), logFile);
-        logToFile("   ]", logFile);
-        
-        ProcessBuilder builder = new ProcessBuilder(dockerArgs);
-        builder.directory(new File(System.getProperty("user.dir")));
-        Map<String, String> env = builder.environment();
-        env.putAll(context.globalEnv);
-        
-        return executeProcess(builder, logFile, stageName);
-    }
-
-    private CommandResult executeCommandInKubernetes(String command, String logFile, PipelineExecutionContext context,
-                                                    String stageName) throws IOException, InterruptedException {
-        logToFile("   ☸️  Executing in Kubernetes [", logFile);
-        
-        // Check if kubectl is available
-        try {
-            ProcessBuilder checkKubectl = new ProcessBuilder("kubectl", "version", "--short");
-            Process kubeCheck = checkKubectl.start();
-            int exitCode = kubeCheck.waitFor();
-            if (exitCode != 0) {
-                logToFile("   ⚠️  kubectl not available - falling back to local execution", logFile);
-                return executeCommandLocally(command, logFile, context, stageName);
-            }
-        } catch (Exception e) {
-            logToFile("   ⚠️  kubectl check failed: " + e.getMessage() + " - falling back to local", logFile);
-            return executeCommandLocally(command, logFile, context, stageName);
-        }
-        
-        String namespace = (String) context.currentAgent.kubeConfig.getOrDefault("namespace", "default");
-        String podName = (String) context.currentAgent.kubeConfig.getOrDefault("podName", "executor-pod");
-        String container = (String) context.currentAgent.kubeConfig.getOrDefault("container", "executor");
-        String image = (String) context.currentAgent.kubeConfig.getOrDefault("image", "alpine:latest");
-        
-        logToFile("      Namespace: " + namespace, logFile);
-        logToFile("      Pod: " + podName, logFile);
-        logToFile("      Container: " + container, logFile);
-        logToFile("      Image: " + image, logFile);
-        logToFile("      Command: " + command, logFile);
-        logToFile("   ]", logFile);
-        
-        // Build kubectl exec command
-        List<String> kubectlArgs = new ArrayList<>();
-        kubectlArgs.add("kubectl");
-        kubectlArgs.add("exec");
-        kubectlArgs.add("-n");
-        kubectlArgs.add(namespace);
-        kubectlArgs.add(podName);
-        kubectlArgs.add("-c");
-        kubectlArgs.add(container);
-        kubectlArgs.add("--");
-        kubectlArgs.add("/bin/sh");
-        kubectlArgs.add("-c");
-        kubectlArgs.add(command);
-        
-        ProcessBuilder builder = new ProcessBuilder(kubectlArgs);
-        builder.directory(new File(System.getProperty("user.dir")));
-        Map<String, String> env = builder.environment();
-        env.putAll(context.globalEnv);
-        
-        return executeProcess(builder, logFile, stageName);
-    }
-
-    private CommandResult executeProcess(ProcessBuilder builder, String logFile, String stageName) 
-                                        throws IOException, InterruptedException {
-        // Capture output with UTF-8 encoding
-        StringBuilder stdout = new StringBuilder();
-        StringBuilder stderr = new StringBuilder();
-        
         // Start process
         long startTime = System.currentTimeMillis();
         Process process = builder.start();
 
+        // Capture output with UTF-8 encoding
+        StringBuilder stdout = new StringBuilder();
+        StringBuilder stderr = new StringBuilder();
+        
         // Use UTF-8 for reading streams (handles emojis and special characters)
         Thread stdoutThread = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
+                    new InputStreamReader(process.getInputStream(), "UTF-8"))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     stdout.append(line).append("\n");
@@ -637,7 +425,7 @@ public class JenkinsfileExecutor {
 
         Thread stderrThread = new Thread(() -> {
             try (BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(process.getErrorStream(), StandardCharsets.UTF_8))) {
+                    new InputStreamReader(process.getErrorStream(), "UTF-8"))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
                     stderr.append(line).append("\n");
@@ -680,35 +468,12 @@ public class JenkinsfileExecutor {
     // ============================
     private String expandVariables(String input, Map<String, String> variables) {
         String result = input;
+        Matcher matcher = ENV_VAR_PATTERN.matcher(input);
         
-        // Expand environment variables
-        Matcher envMatcher = ENV_VAR_PATTERN.matcher(result);
-        while (envMatcher.find()) {
-            String varName = envMatcher.group(1);
+        while (matcher.find()) {
+            String varName = matcher.group(1);
             String varValue = variables.getOrDefault(varName, "");
             result = result.replace("${" + varName + "}", varValue);
-        }
-        
-        return result;
-    }
-
-    private String expandVariables(String input, PipelineExecutionContext context) {
-        String result = input;
-        
-        // Expand environment variables
-        Matcher envMatcher = ENV_VAR_PATTERN.matcher(result);
-        while (envMatcher.find()) {
-            String varName = envMatcher.group(1);
-            String varValue = context.globalEnv.getOrDefault(varName, "");
-            result = result.replace("${" + varName + "}", varValue);
-        }
-        
-        // Expand parameter variables
-        Matcher paramMatcher = PARAM_VAR_PATTERN.matcher(result);
-        while (paramMatcher.find()) {
-            String paramName = paramMatcher.group(1);
-            String paramValue = context.parametersValues.getOrDefault(paramName, "");
-            result = result.replace("${params." + paramName + "}", paramValue);
         }
         
         return result;
@@ -800,7 +565,6 @@ public class JenkinsfileExecutor {
         boolean inSteps = false;
         String currentStageName = null;
         List<String> currentSteps = new ArrayList<>();
-        String stageWhenCondition = null;
         int braceCount = 0;
 
         for (int i = 0; i < lines.size(); i++) {
@@ -818,9 +582,7 @@ public class JenkinsfileExecutor {
 
                 if (braceCount == 0) {
                     if (inStage && currentStageName != null) {
-                        PipelineStage stage = new PipelineStage(currentStageName, new ArrayList<>(currentSteps));
-                        stage.whenCondition = stageWhenCondition;
-                        stages.add(stage);
+                        stages.add(new PipelineStage(currentStageName, new ArrayList<>(currentSteps)));
                     }
                     inStages = false;
                     continue;
@@ -828,34 +590,11 @@ public class JenkinsfileExecutor {
 
                 if (line.startsWith("stage('") || line.startsWith("stage(\"")) {
                     if (inStage && currentStageName != null) {
-                        PipelineStage stage = new PipelineStage(currentStageName, new ArrayList<>(currentSteps));
-                        stage.whenCondition = stageWhenCondition;
-                        stages.add(stage);
+                        stages.add(new PipelineStage(currentStageName, new ArrayList<>(currentSteps)));
                     }
                     currentStageName = line.split("['\"]")[1];
                     inStage = true;
                     currentSteps.clear();
-                    stageWhenCondition = null;
-                    continue;
-                }
-
-                // Capture when condition
-                if (inStage && line.contains("when {")) {
-                    StringBuilder whenBlock = new StringBuilder();
-                    int whenBraces = 1;
-                    whenBlock.append(line.substring(line.indexOf("when {") + 6));
-                    i++;
-                    while (i < lines.size() && whenBraces > 0) {
-                        String whenLine = lines.get(i).trim();
-                        whenBraces += (int) whenLine.chars().filter(c -> c == '{').count();
-                        whenBraces -= (int) whenLine.chars().filter(c -> c == '}').count();
-                        if (whenBraces > 0) {
-                            whenBlock.append(" ").append(whenLine);
-                        }
-                        i++;
-                    }
-                    i--; // Adjust since for loop will increment
-                    stageWhenCondition = whenBlock.toString();
                     continue;
                 }
 
@@ -864,7 +603,7 @@ public class JenkinsfileExecutor {
                     continue;
                 }
 
-                if (inSteps && (line.startsWith("sh ") || line.startsWith("bat ") || line.startsWith("echo ") || line.startsWith("script "))) {
+                if (inSteps && (line.startsWith("sh ") || line.startsWith("bat ") || line.startsWith("echo "))) {
                     String cmd = extractCommand(line);
                     if (!cmd.isEmpty()) {
                         currentSteps.add(cmd);
@@ -927,217 +666,6 @@ public class JenkinsfileExecutor {
         return postActions;
     }
 
-    // ============================
-    // Advanced Parsing Methods
-    // ============================
-
-    private AgentConfig parseAgentConfig(List<String> lines, String logFile) {
-        AgentConfig config = new AgentConfig();
-        config.type = "any"; // default
-
-        String content = String.join("\n", lines);
-
-        if (content.contains("docker {")) {
-            config.type = "docker";
-            Matcher matcher = DOCKER_AGENT_PATTERN.matcher(content);
-            if (matcher.find()) {
-                String dockerBlock = matcher.group(1);
-                config.image = extractValue(dockerBlock, "image", "['\"]?");
-                // Extract args
-                Pattern argsPattern = Pattern.compile("args\\s+['\"]([^'\"]+)['\"]");
-                Matcher argsMatcher = argsPattern.matcher(dockerBlock);
-                if (argsMatcher.find()) {
-                    config.args.add(argsMatcher.group(1));
-                }
-            }
-        } else if (content.contains("kubernetes {")) {
-            config.type = "kubernetes";
-            Matcher matcher = KUBERNETES_AGENT_PATTERN.matcher(content);
-            if (matcher.find()) {
-                String kubeBlock = matcher.group(1);
-                config.kubeConfig.put("label", extractValue(kubeBlock, "label", "['\"]?"));
-                config.kubeConfig.put("defaultContainer", extractValue(kubeBlock, "defaultContainer", "['\"]?"));
-                config.kubeConfig.put("yaml", extractValue(kubeBlock, "yaml", "['\"]?"));
-            }
-        } else if (content.contains("label")) {
-            config.type = "label";
-            Pattern labelPattern = Pattern.compile("label\\s+['\"]([^'\"]+)['\"]");
-            Matcher matcher = labelPattern.matcher(content);
-            if (matcher.find()) {
-                config.label = matcher.group(1);
-            }
-        }
-
-        return config;
-    }
-
-    private AgentConfig parseAgentFromString(String agentStr, String logFile) {
-        AgentConfig config = new AgentConfig();
-        config.type = "any";
-        
-        if (agentStr.contains("docker")) {
-            config.type = "docker";
-            config.image = extractValue(agentStr, "image", "['\"]?");
-        } else if (agentStr.contains("kubernetes")) {
-            config.type = "kubernetes";
-        }
-        
-        return config;
-    }
-
-    private Map<String, ParameterDefinition> parseParameters(List<String> lines, String logFile) {
-        Map<String, ParameterDefinition> params = new HashMap<>();
-        String content = String.join("\n", lines);
-
-        Pattern parametersPattern = Pattern.compile("parameters\\s*\\{([^}]+?)\\s*\\}", Pattern.DOTALL);
-        Matcher matcher = parametersPattern.matcher(content);
-
-        if (matcher.find()) {
-            String paramBlock = matcher.group(1);
-
-            // Parse choice parameters
-            Pattern choicePattern = Pattern.compile("choice\\(([^)]+?)\\)", Pattern.DOTALL);
-            Matcher choiceMatcher = choicePattern.matcher(paramBlock);
-            while (choiceMatcher.find()) {
-                ParameterDefinition param = parseChoiceParameter(choiceMatcher.group(1));
-                if (param.name != null) {
-                    params.put(param.name, param);
-                }
-            }
-
-            // Parse string parameters
-            Pattern stringPattern = Pattern.compile("string\\(([^)]+?)\\)", Pattern.DOTALL);
-            Matcher stringMatcher = stringPattern.matcher(paramBlock);
-            while (stringMatcher.find()) {
-                ParameterDefinition param = parseStringParameter(stringMatcher.group(1));
-                if (param.name != null) {
-                    params.put(param.name, param);
-                }
-            }
-
-            // Parse boolean parameters
-            Pattern boolPattern = Pattern.compile("booleanParam\\(([^)]+?)\\)", Pattern.DOTALL);
-            Matcher boolMatcher = boolPattern.matcher(paramBlock);
-            while (boolMatcher.find()) {
-                ParameterDefinition param = parseBooleanParameter(boolMatcher.group(1));
-                if (param.name != null) {
-                    params.put(param.name, param);
-                }
-            }
-        }
-
-        return params;
-    }
-
-    private ParameterDefinition parseChoiceParameter(String content) {
-        ParameterDefinition param = new ParameterDefinition();
-        param.type = "choice";
-        param.name = extractValue(content, "name", "['\"]?");
-        param.description = extractValue(content, "description", "['\"]?");
-
-        Pattern choicesPattern = Pattern.compile("choices\\s*:\\s*\\[([^\\]]+)\\]");
-        Matcher matcher = choicesPattern.matcher(content);
-        if (matcher.find()) {
-            String choicesStr = matcher.group(1);
-            param.choices = Arrays.stream(choicesStr.split(","))
-                .map(String::trim)
-                .map(s -> s.replaceAll("['\"]|\\s+", ""))
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toList());
-            if (!param.choices.isEmpty()) {
-                param.defaultValue = param.choices.get(0);
-            }
-        }
-
-        return param;
-    }
-
-    private ParameterDefinition parseStringParameter(String content) {
-        ParameterDefinition param = new ParameterDefinition();
-        param.type = "string";
-        param.name = extractValue(content, "name", "['\"]?");
-        param.defaultValue = extractValue(content, "defaultValue", "['\"]?");
-        param.description = extractValue(content, "description", "['\"]?");
-        return param;
-    }
-
-    private ParameterDefinition parseBooleanParameter(String content) {
-        ParameterDefinition param = new ParameterDefinition();
-        param.type = "boolean";
-        param.name = extractValue(content, "name", "['\"]?");
-        param.description = extractValue(content, "description", "['\"]?");
-        String defaultStr = extractValue(content, "defaultValue", "['\"]?");
-        param.defaultValue = (defaultStr != null && defaultStr.toLowerCase().equals("true")) ? "true" : "false";
-        return param;
-    }
-
-    private List<Trigger> parseTriggers(List<String> lines, String logFile) {
-        List<Trigger> triggers = new ArrayList<>();
-        String content = String.join("\n", lines);
-
-        Pattern triggersPattern = Pattern.compile("triggers\\s*\\{([^}]+?)\\}", Pattern.DOTALL);
-        Matcher matcher = triggersPattern.matcher(content);
-
-        if (matcher.find()) {
-            String triggersBlock = matcher.group(1);
-
-            // Parse cron trigger
-            if (triggersBlock.contains("cron")) {
-                Trigger trigger = new Trigger();
-                trigger.type = "cron";
-                trigger.expression = extractValue(triggersBlock, "cron", "['\"]?");
-                triggers.add(trigger);
-            }
-
-            // Parse pollSCM trigger
-            if (triggersBlock.contains("pollSCM")) {
-                Trigger trigger = new Trigger();
-                trigger.type = "pollSCM";
-                trigger.expression = extractValue(triggersBlock, "pollSCM", "['\"]?");
-                triggers.add(trigger);
-            }
-        }
-
-        return triggers;
-    }
-
-    private String extractValue(String content, String key, String quotePattern) {
-        Pattern pattern = Pattern.compile(key + "\\s*[:\\(]?\\s*" + quotePattern + "([^'\"\n}]+?)" + quotePattern);
-        Matcher matcher = pattern.matcher(content);
-        if (matcher.find()) {
-            return matcher.group(1).trim();
-        }
-        return null;
-    }
-
-    private void setupParameters(PipelineExecutionContext context, String logFile) throws IOException {
-        logToFile("🔧 Setting up parameters:", logFile);
-        for (Map.Entry<String, ParameterDefinition> entry : context.parameters.entrySet()) {
-            String paramName = entry.getKey();
-            ParameterDefinition paramDef = entry.getValue();
-            String value = paramDef.defaultValue != null ? paramDef.defaultValue : "";
-            context.parametersValues.put(paramName, value);
-            String displayValue = paramDef.type.equals("password") ? "****" : value;
-            logToFile("   - " + paramName + " = " + displayValue, logFile);
-        }
-    }
-
-    private boolean evaluateWhenCondition(String condition, PipelineExecutionContext context) {
-        if (condition == null || condition.isEmpty()) {
-            return true;
-        }
-        
-        // Simple condition evaluation
-        if (condition.contains("expression")) {
-            return true; // For now, treat expressions as true
-        }
-        if (condition.contains("branch")) {
-            return true; // Branch conditions default to true for executor
-        }
-        
-        return true;
-    }
-
     private String extractCommand(String line) {
         String trimmed = line.trim();
         
@@ -1194,7 +722,7 @@ public class JenkinsfileExecutor {
             JenkinsfileExecutor executor = new JenkinsfileExecutor(testExecutor);
 
             // Use the simple test file that works on all platforms
-            String jenkinsfilePath = "d:/lap/Projects/Job Scheduling and Execution - Copy/examples/Jenkinsfile.docker";
+            String jenkinsfilePath = "d:/lap/Projects/Job Scheduling and Execution - Copy/examples/Jenkinsfile.test";
             
             Payload testPayload = Payload.builder()
                     .Id(1L)

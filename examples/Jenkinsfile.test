@@ -1,0 +1,61 @@
+// ================================
+// SIMPLE TEST - Works on Windows
+// ================================
+
+pipeline {
+    agent any
+    
+    environment {
+        PROJECT = 'TestProject'
+        VERSION = '1.0.0'
+        STATUS = 'Building'
+    }
+    
+    tools {
+        java 'OpenJDK 11'
+    }
+    
+    stages {
+        stage('Initialize') {
+            steps {
+                echo 'Project: TestProject'
+                echo 'Version: 1.0.0'
+                echo 'Status: Starting build'
+                sh 'echo "Init complete"'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo 'Building application'
+                sh 'echo Building step executed'
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                echo 'Running tests'
+                sh 'echo Testing complete'
+            }
+        }
+        
+        stage('Package') {
+            steps {
+                echo 'Creating package'
+                sh 'echo Package created'
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'Pipeline execution finished'
+        }
+        success {
+            echo 'Build successful!'
+        }
+        failure {
+            echo 'Build failed!'
+        }
+    }
+}

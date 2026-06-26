@@ -1,0 +1,171 @@
+// ================================
+// EXAMPLE 4: Complete CI/CD Pipeline
+// ================================
+
+pipeline {
+    agent any
+    
+    environment {
+        PROJECT_NAME = 'enterprise-app'
+        BUILD_VERSION = '5.2.0'
+        DOCKER_REGISTRY = 'registry.example.com'
+        SONAR_HOST = 'http://sonarqube.example.com'
+        PROD_SERVER = 'prod.example.com'
+        STAGING_SERVER = 'staging.example.com'
+        SLACK_WEBHOOK = 'https://hooks.slack.com/services/xxx/yyy/zzz'
+    }
+    
+    tools {
+        jdk 'OpenJDK 17'
+        maven '3.9.0'
+        docker '20.10'
+        nodejs 'v18'
+    }
+    
+    stages {
+        stage('Preparation') {
+            steps {
+                echo '📋 Preparing build environment...'
+                sh 'echo "Build Version: ${BUILD_VERSION}"'
+                sh 'echo "Date: $(date)"'
+                sh 'echo "Workspace: ${WORKSPACE}"'
+            }
+        }
+        
+        stage('Checkout') {
+            steps {
+                echo '📥 Checking out source code...'
+                sh 'git log --oneline -n 5 || echo "No git repo"'
+            }
+        }
+        
+        stage('Build Backend') {
+            steps {
+                echo '🔨 Building backend services...'
+                sh 'cd backend && mvn clean compile -DskipTests'
+            }
+        }
+        
+        stage('Build Frontend') {
+            steps {
+                echo '⚛️ Building frontend...'
+                sh 'cd frontend && npm install'
+                sh 'cd frontend && npm run build'
+            }
+        }
+        
+        stage('Backend Tests') {
+            steps {
+                echo '🧪 Running backend unit tests...'
+                sh 'cd backend && mvn test'
+            }
+        }
+        
+        stage('Frontend Tests') {
+            steps {
+                echo '🧪 Running frontend unit tests...'
+                sh 'cd frontend && npm test'
+            }
+        }
+        
+        stage('Code Quality') {
+            steps {
+                echo '📊 Running code quality checks...'
+                sh 'cd backend && mvn sonar:sonar -Dsonar.host.url=${SONAR_HOST}'
+            }
+        }
+        
+        stage('Security Scan') {
+            steps {
+                echo '🔒 Running security vulnerability scan...'
+                sh 'cd backend && mvn org.owasp:dependency-check-maven:check'
+            }
+        }
+        
+        stage('Build Docker Images') {
+            steps {
+                echo '🐳 Building Docker images...'
+                sh 'docker build -t ${DOCKER_REGISTRY}/${PROJECT_NAME}-backend:${BUILD_VERSION} ./backend'
+                sh 'docker build -t ${DOCKER_REGISTRY}/${PROJECT_NAME}-frontend:${BUILD_VERSION} ./frontend'
+                sh 'docker images | grep ${PROJECT_NAME}'
+            }
+        }
+        
+        stage('Push to Registry') {
+            steps {
+                echo '📤 Pushing images to Docker registry...'
+                sh 'docker push ${DOCKER_REGISTRY}/${PROJECT_NAME}-backend:${BUILD_VERSION}'
+                sh 'docker push ${DOCKER_REGISTRY}/${PROJECT_NAME}-frontend:${BUILD_VERSION}'
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            steps {
+                echo '🚀 Deploying to staging environment...'
+                sh 'ssh deployer@${STAGING_SERVER} "cd /opt/apps && docker-compose pull && docker-compose up -d"'
+            }
+        }
+        
+        stage('Integration Tests on Staging') {
+            steps {
+                echo '🔗 Running integration tests on staging...'
+                sh 'bash tests/run-integration-tests.sh ${STAGING_SERVER}'
+            }
+        }
+        
+        stage('Performance Tests') {
+            steps {
+                echo '⚡ Running performance tests...'
+                sh 'bash tests/run-performance-tests.sh ${STAGING_SERVER}'
+            }
+        }
+        
+        stage('Approval for Production') {
+            steps {
+                echo '⏸️ Waiting for production approval...'
+                echo 'Manual approval would happen here in real Jenkins'
+                sh 'echo "Approval status: APPROVED"'
+            }
+        }
+        
+        stage('Deploy to Production') {
+            steps {
+                echo '🚀 Deploying to production environment...'
+                sh 'ssh deployer@${PROD_SERVER} "cd /opt/apps && docker-compose pull && docker-compose up -d"'
+            }
+        }
+        
+        stage('Smoke Tests on Prod') {
+            steps {
+                echo '🔥 Running smoke tests on production...'
+                sh 'bash tests/run-smoke-tests.sh ${PROD_SERVER}'
+            }
+        }
+        
+        stage('Notification') {
+            steps {
+                echo '📢 Sending deployment notification...'
+                sh 'echo "Deployment notification sent"'
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo '🧹 Running cleanup...'
+            sh 'docker system prune -f || true'
+            sh 'rm -rf ${WORKSPACE}/temp || true'
+        }
+        success {
+            echo '✅ Pipeline completed successfully!'
+            echo 'Deployment URL: https://${PROD_SERVER}'
+        }
+        failure {
+            echo '❌ Pipeline failed! Starting rollback...'
+            sh 'ssh deployer@${PROD_SERVER} "cd /opt/apps && docker-compose down && docker-compose up -d"'
+        }
+        unstable {
+            echo '⚠️ Pipeline unstable - manual review required'
+        }
+    }
+}

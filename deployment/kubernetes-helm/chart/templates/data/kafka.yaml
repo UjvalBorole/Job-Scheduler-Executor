@@ -1,0 +1,121 @@
+{{- $kafka := .Values.data.kafka }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $kafka.name }}
+  namespace: {{ .Values.namespaces.data }}
+  labels:
+    app: {{ $kafka.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $kafka.name }}
+  ports:
+    - name: client
+      port: {{ $kafka.clientPort }}
+      targetPort: client
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $kafka.name }}-headless
+  namespace: {{ .Values.namespaces.data }}
+  labels:
+    app: {{ $kafka.name }}
+spec:
+  clusterIP: None
+  selector:
+    app: {{ $kafka.name }}
+  ports:
+    - name: client
+      port: {{ $kafka.clientPort }}
+      targetPort: client
+    - name: controller
+      port: {{ $kafka.controllerPort }}
+      targetPort: controller
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $kafka.name }}
+  namespace: {{ .Values.namespaces.data }}
+  labels:
+    app: {{ $kafka.name }}
+spec:
+  serviceName: {{ $kafka.name }}-headless
+  replicas: {{ $kafka.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $kafka.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $kafka.name }}
+    spec:
+      terminationGracePeriodSeconds: 90
+      containers:
+        - name: {{ $kafka.name }}
+          image: {{ $kafka.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: client
+              containerPort: {{ $kafka.clientPort }}
+            - name: controller
+              containerPort: {{ $kafka.controllerPort }}
+          env:
+            - name: KAFKA_PROCESS_ROLES
+              value: broker,controller
+            - name: KAFKA_NODE_ID
+              value: "1"
+            - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+              value: {{ printf "1@%s-0.%s-headless.%s.svc.cluster.local:%v" $kafka.name $kafka.name .Values.namespaces.data $kafka.controllerPort | quote }}
+            - name: KAFKA_CONTROLLER_LISTENER_NAMES
+              value: CONTROLLER
+            - name: KAFKA_LISTENERS
+              value: {{ printf "PLAINTEXT://:%v,CONTROLLER://:%v" $kafka.clientPort $kafka.controllerPort | quote }}
+            - name: KAFKA_ADVERTISED_LISTENERS
+              value: {{ printf "PLAINTEXT://%s.%s.svc.cluster.local:%v" $kafka.name .Values.namespaces.data $kafka.clientPort | quote }}
+            - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+              value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+            - name: KAFKA_CLUSTER_ID
+              value: {{ $kafka.clusterId | quote }}
+            - name: KAFKA_LOG_DIRS
+              value: /var/lib/kafka/data
+            - name: KAFKA_AUTO_CREATE_TOPICS_ENABLE
+              value: "true"
+            - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+              value: "1"
+            - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+              value: "1"
+          readinessProbe:
+            tcpSocket:
+              port: client
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 12
+          livenessProbe:
+            tcpSocket:
+              port: client
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml $kafka.resources | nindent 12 }}
+          volumeMounts:
+            - name: kafka-data
+              mountPath: /var/lib/kafka/data
+  volumeClaimTemplates:
+    - metadata:
+        name: kafka-data
+      spec:
+        {{- include "job-platform.pvcStorageClass" $kafka | nindent 8 }}
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ $kafka.storage }}
+

@@ -1,0 +1,8 @@
+Job Platform installed as release {{ .Release.Name }}.
+
+Useful commands:
+  kubectl get pods -n {{ .Values.namespaces.app }}
+  kubectl get pods -n {{ .Values.namespaces.data }}
+  kubectl get pods -n {{ .Values.namespaces.observability }}
+  kubectl port-forward svc/api-gateway 8091:8091 -n {{ .Values.namespaces.app }}
+  kubectl port-forward svc/grafana 3000:3000 -n {{ .Values.namespaces.observability }}

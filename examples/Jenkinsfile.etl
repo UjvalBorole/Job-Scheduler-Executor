@@ -1,0 +1,74 @@
+// ================================
+// ETL Pipeline - Works with Current Executor
+// ================================
+
+pipeline {
+    agent any
+    
+    environment {
+        PYTHON = 'python3'
+        GIT_REPO = 'https://github.com/zaccode/microservice.git'
+        GIT_BRANCH = 'main'
+        WORKING_DIR = './microservice'
+    }
+    
+    tools {
+        python '3.11'
+    }
+    
+    stages {
+        stage('Checkout Scripts') {
+            steps {
+                echo 'Cloning ETL scripts from GitHub...'
+                sh 'git clone -b ${GIT_BRANCH} ${GIT_REPO}'
+            }
+        }
+        
+        stage('Verify Python') {
+            steps {
+                echo 'Verifying Python installation...'
+                sh '${PYTHON} --version'
+            }
+        }
+        
+        stage('Extract') {
+            steps {
+                echo 'Running Extract Step...'
+                sh '${PYTHON} ${WORKING_DIR}/etl-scripts/extract.py'
+            }
+        }
+        
+        stage('Transform') {
+            steps {
+                echo 'Running Transform Step...'
+                sh '${PYTHON} ${WORKING_DIR}/etl-scripts/transform.py'
+            }
+        }
+        
+        stage('Load') {
+            steps {
+                echo 'Running Load Step...'
+                sh '${PYTHON} ${WORKING_DIR}/etl-scripts/load.py'
+            }
+        }
+        
+        stage('Cleanup') {
+            steps {
+                echo 'Cleaning up temporary files...'
+                sh 'echo "Cleanup completed"'
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo 'ETL Pipeline execution finished'
+        }
+        success {
+            echo 'ETL Pipeline executed successfully - Status: PASSED'
+        }
+        failure {
+            echo 'ETL Pipeline failed - Status: FAILED'
+        }
+    }
+}

@@ -1,0 +1,91 @@
+{{- $cache := .Values.data.redis }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $cache.name }}-config
+  namespace: {{ .Values.namespaces.data }}
+data:
+  redis.conf: |
+    appendonly yes
+    protected-mode no
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $cache.name }}
+  namespace: {{ .Values.namespaces.data }}
+  labels:
+    app: {{ $cache.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $cache.name }}
+  ports:
+    - name: redis
+      port: {{ $cache.port }}
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $cache.name }}
+  namespace: {{ .Values.namespaces.data }}
+  labels:
+    app: {{ $cache.name }}
+spec:
+  serviceName: {{ $cache.name }}
+  replicas: {{ $cache.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $cache.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $cache.name }}
+    spec:
+      containers:
+        - name: {{ $cache.name }}
+          image: {{ $cache.image }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          args:
+            - redis-server
+            - /usr/local/etc/redis/redis.conf
+          ports:
+            - name: redis
+              containerPort: {{ $cache.port }}
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml $cache.resources | nindent 12 }}
+          volumeMounts:
+            - name: redis-config
+              mountPath: /usr/local/etc/redis
+            - name: redis-data
+              mountPath: /data
+      volumes:
+        - name: redis-config
+          configMap:
+            name: {{ $cache.name }}-config
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+      spec:
+        {{- include "job-platform.pvcStorageClass" $cache | nindent 8 }}
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ $cache.storage }}
+

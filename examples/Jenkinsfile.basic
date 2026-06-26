@@ -1,0 +1,55 @@
+// ================================
+// EXAMPLE 1: Basic Build Pipeline
+// ================================
+
+pipeline {
+    agent any
+    
+    environment {
+        PROJECT_NAME = 'MyApplication'
+        BUILD_VERSION = '1.0.0'
+        JAVA_HOME = '/usr/lib/jvm/java-11'
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                echo '📦 Checking out source code...'
+                sh 'echo "Git clone would happen here"'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo '🔨 Building project...'
+                sh 'mvn clean compile'
+            }
+        }
+        
+        stage('Test') {
+            steps {
+                echo '🧪 Running tests...'
+                sh 'mvn test'
+            }
+        }
+        
+        stage('Package') {
+            steps {
+                echo '📦 Packaging application...'
+                sh 'mvn package -DskipTests'
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo '🔔 Pipeline execution completed'
+        }
+        success {
+            echo '✅ Build successful!'
+        }
+        failure {
+            echo '❌ Build failed!'
+        }
+    }
+}

@@ -1,0 +1,100 @@
+// ================================
+// EXAMPLE 3: Spring Boot Application
+// ================================
+
+pipeline {
+    agent any
+    
+    environment {
+        APP_NAME = 'spring-boot-app'
+        APP_VERSION = '3.0.0'
+        JAVA_VERSION = '17'
+        MAVEN_VERSION = '3.8.1'
+        SPRING_PROFILE = 'production'
+        ARTIFACT_PATH = 'target/${APP_NAME}-${APP_VERSION}.jar'
+    }
+    
+    tools {
+        java 'OpenJDK 17'
+        maven '3.8.1'
+    }
+    
+    stages {
+        stage('Initialize') {
+            steps {
+                echo '📋 Initializing Spring Boot build...'
+                echo 'Java: ${JAVA_VERSION}'
+                echo 'Maven: ${MAVEN_VERSION}'
+                echo 'App: ${APP_NAME}'
+                sh 'java -version'
+                sh 'mvn --version'
+            }
+        }
+        
+        stage('Build') {
+            steps {
+                echo '🏗️ Building Spring Boot application...'
+                sh 'mvn clean package -P${SPRING_PROFILE} -DskipTests'
+            }
+        }
+        
+        stage('Unit Tests') {
+            steps {
+                echo '🧪 Running unit tests...'
+                sh 'mvn test -P${SPRING_PROFILE}'
+            }
+        }
+        
+        stage('Integration Tests') {
+            steps {
+                echo '🔗 Running integration tests...'
+                sh 'mvn verify -P${SPRING_PROFILE} -DskipUnitTests'
+            }
+        }
+        
+        stage('SonarQube Analysis') {
+            steps {
+                echo '📊 Running code quality analysis...'
+                sh 'mvn sonar:sonar -Dsonar.projectKey=${APP_NAME}'
+            }
+        }
+        
+        stage('Archive Artifacts') {
+            steps {
+                echo '📦 Archiving build artifacts...'
+                sh 'mkdir -p artifacts'
+                sh 'cp ${ARTIFACT_PATH} artifacts/'
+                sh 'ls -lh artifacts/'
+            }
+        }
+        
+        stage('Deploy to Staging') {
+            steps {
+                echo '🚀 Deploying to staging environment...'
+                sh 'bash scripts/deploy-staging.sh ${ARTIFACT_PATH}'
+            }
+        }
+        
+        stage('Health Check') {
+            steps {
+                echo '🏥 Checking application health...'
+                sh 'bash scripts/health-check.sh'
+            }
+        }
+    }
+    
+    post {
+        always {
+            echo '📊 Post-build actions...'
+            sh 'mvn clean'
+        }
+        success {
+            echo '✅ Spring Boot application deployed successfully!'
+            sh 'echo "Deployment URL: http://staging.example.com:8080"'
+        }
+        failure {
+            echo '❌ Spring Boot deployment failed!'
+            sh 'bash scripts/rollback.sh'
+        }
+    }
+}

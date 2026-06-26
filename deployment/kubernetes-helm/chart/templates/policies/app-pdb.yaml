@@ -1,0 +1,15 @@
+{{- range $key, $app := .Values.apps }}
+{{- if and $app.pdb $app.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $app.name }}
+  namespace: {{ $.Values.namespaces.app }}
+spec:
+  minAvailable: {{ $app.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      app: {{ $app.name }}
+{{- end }}
+{{- end }}

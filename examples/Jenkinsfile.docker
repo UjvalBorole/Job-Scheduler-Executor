@@ -1,0 +1,134 @@
+// // ================================
+// // EXAMPLE 2: Docker Build & Push
+// // ================================
+
+// pipeline {
+//     agent any
+    
+//     environment {
+//         DOCKER_REGISTRY = 'docker.io'
+//         DOCKER_REPO = 'mycompany/myapp'
+//         APP_VERSION = '2.1.0'
+//     }
+    
+//     tools {
+//         docker '20.10'
+//         java 'OpenJDK 11'
+//     }
+    
+//     stages {
+//         stage('Clean') {
+//             steps {
+//                 echo 'Cleaning previous builds...'
+//                 sh 'echo "Workspace cleanup"'
+//             }
+//         }
+        
+//         stage('Compile') {
+//             steps {
+//                 echo 'Compiling application...'
+//                 sh 'echo "Compilation would happen here"'
+//             }
+//         }
+        
+//         stage('Build Docker Image') {
+//             steps {
+//                 echo 'Building Docker image...'
+//                 sh 'echo "Docker build would happen here"'
+//             }
+//         }
+        
+//         stage('Push to Registry') {
+//             steps {
+//                 echo 'Pushing image to registry...'
+//                 sh 'echo "Docker push would happen here"'
+//             }
+//         }
+        
+//         stage('Deploy') {
+//             steps {
+//                 echo 'Deploying container...'
+//                 sh 'echo "Deployment would happen here"'
+//             }
+//         }
+//     }
+    
+//     post {
+//         always {
+//             echo 'Cleaning up Docker resources...'
+//         }
+//         success {
+//             echo 'Docker image built and deployed successfully!'
+//         }
+//         failure {
+//             echo 'Docker build or deployment failed!'
+//         }
+//     }
+// }
+
+
+
+pipeline {
+    agent {
+        docker {
+            image 'maven:3.8.4-openjdk-11-slim'
+            args '-v /var/run/docker.sock:/var/run/docker.sock'
+        }
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/your-org/your-repo.git'
+            }
+        }
+        
+        stage('Build & Test') {
+            steps {
+                sh '''
+                    echo "Starting build process..."
+                    
+                    # Simple build
+                    mvn clean compile package
+                    
+                    # Show built artifacts
+                    ls -la target/
+                    
+                    # Build Docker image
+                    if [ -f Dockerfile ]; then
+                        docker build -t my-app:latest .
+                        docker images
+                    else
+                        echo "No Dockerfile found, skipping Docker build"
+                    fi
+                '''
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'target/*.jar'
+                }
+            }
+        }
+        
+        stage('Run Container') {
+            steps {
+                sh '''
+                    echo "Running container..."
+                    docker run -d --name test-container -p 8080:8080 my-app:latest || echo "Container already exists"
+                    docker ps
+                '''
+            }
+            post {
+                always {
+                    sh 'docker stop test-container && docker rm test-container || true'
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}

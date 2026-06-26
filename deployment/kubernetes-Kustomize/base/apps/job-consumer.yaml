@@ -1,0 +1,160 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: job-consumer-secret
+  namespace: job-scheduler
+type: Opaque
+stringData:
+  postgres-username: root
+  postgres-password: root
+  mongodb-username: admin
+  mongodb-password: admin123
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: job-consumer
+  namespace: job-scheduler
+  labels:
+    app: job-consumer
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  minReadySeconds: 10
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: job-consumer
+  template:
+    metadata:
+      labels:
+        app: job-consumer
+        logging: promtail
+    spec:
+      terminationGracePeriodSeconds: 45
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: job-consumer
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: job-consumer
+          image: boroleujval4/job-consumersvc:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8082
+          env:
+            - name: TZ
+              value: Asia/Kolkata
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Duser.timezone=Asia/Kolkata"
+            - name: SPRING_APPLICATION_NAME
+              value: consumer
+            - name: SPRING_PROFILES_ACTIVE
+              value: kubernetes
+            - name: SERVER_PORT
+              value: "8082"
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: kafka.data.svc.cluster.local:9092
+            - name: SPRING_KAFKA_BOOTSTRAP_SERVERS
+              value: kafka.data.svc.cluster.local:9092
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:postgresql://postgres.data.svc.cluster.local:5432/JobDB
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: job-consumer-secret
+                  key: postgres-username
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: job-consumer-secret
+                  key: postgres-password
+            - name: SPRING_DATA_MONGODB_HOST
+              value: mongodb.data.svc.cluster.local
+            - name: SPRING_DATA_MONGODB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: job-consumer-secret
+                  key: mongodb-username
+            - name: SPRING_DATA_MONGODB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: job-consumer-secret
+                  key: mongodb-password
+            - name: REDIS_HOST
+              value: redis.data.svc.cluster.local
+            - name: REDIS_PORT
+              value: "6379"
+            - name: MANAGEMENT_TRACING_ENABLED
+              value: "true"
+            - name: MANAGEMENT_ZIPKIN_TRACING_ENDPOINT
+              value: http://tempo.observability.svc.cluster.local:9411/api/v2/spans
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: job-consumer
+  namespace: job-scheduler
+  labels:
+    app: job-consumer
+spec:
+  type: ClusterIP
+  selector:
+    app: job-consumer
+  ports:
+    - name: http
+      port: 8082
+      targetPort: http
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: job-consumer
+  namespace: job-scheduler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: job-consumer
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

@@ -1,0 +1,133 @@
+{{- $app := .Values.apps.jobService }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $app.name }}-config
+  namespace: {{ .Values.namespaces.app }}
+data:
+  TZ: {{ .Values.global.timezone | quote }}
+  JAVA_TOOL_OPTIONS: {{ printf "-Duser.timezone=%s" .Values.global.javaTimezone | quote }}
+  SPRING_APPLICATION_NAME: {{ $app.springApplicationName | quote }}
+  SPRING_PROFILES_ACTIVE: {{ .Values.global.profile | quote }}
+  SERVER_PORT: {{ $app.port | quote }}
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: {{ include "job-platform.kafkaAddress" . | quote }}
+  REDIS_HOST: {{ include "job-platform.redisHost" . | quote }}
+  REDIS_PORT: {{ .Values.data.redis.port | quote }}
+  OBJECT_STORAGE_ENDPOINT: {{ include "job-platform.minioEndpoint" . | quote }}
+  OBJECT_STORAGE_BUCKET: {{ .Values.data.minio.bucket | quote }}
+  MANAGEMENT_TRACING_ENABLED: "true"
+  MANAGEMENT_ZIPKIN_TRACING_ENDPOINT: {{ printf "http://%s.%s.svc.cluster.local:%v/api/v2/spans" .Values.observability.tempo.name .Values.namespaces.observability .Values.observability.tempo.zipkinPort | quote }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $app.name }}
+  namespace: {{ .Values.namespaces.app }}
+  labels:
+    app: {{ $app.name }}
+spec:
+  replicas: {{ $app.replicas }}
+  revisionHistoryLimit: 5
+  minReadySeconds: {{ $app.minReadySeconds }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: {{ $app.name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $app.name }}
+        logging: promtail
+    spec:
+      terminationGracePeriodSeconds: {{ $app.terminationGracePeriodSeconds }}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: {{ $app.name }}
+                topologyKey: kubernetes.io/hostname
+      containers:
+        - name: {{ $app.name }}
+          image: {{ include "job-platform.image" $app }}
+          imagePullPolicy: {{ $.Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $app.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ $app.name }}-config
+          env:
+            - name: OBJECT_STORAGE_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-app-secret
+                  key: access-key
+            - name: OBJECT_STORAGE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: minio-app-secret
+                  key: secret-key
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            initialDelaySeconds: {{ $app.readinessInitialDelaySeconds }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            initialDelaySeconds: {{ $app.livenessInitialDelaySeconds }}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml $app.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $app.name }}
+  namespace: {{ .Values.namespaces.app }}
+  labels:
+    app: {{ $app.name }}
+spec:
+  type: ClusterIP
+  selector:
+    app: {{ $app.name }}
+  ports:
+    - name: http
+      port: {{ $app.port }}
+      targetPort: http
+{{- if $app.hpa.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ $app.name }}
+  namespace: {{ .Values.namespaces.app }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ $app.name }}
+  minReplicas: {{ $app.hpa.minReplicas }}
+  maxReplicas: {{ $app.hpa.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $app.hpa.averageUtilization }}
+{{- end }}
+
